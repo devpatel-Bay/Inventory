@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <title>Hotel Inventory & Sales Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Minimal styling (no Tailwind needed) -->
   <style>
     :root { --bg:#f6f6f7; --card:#fff; --border:#e5e7eb; --text:#111; --muted:#6b7280; }
     * { box-sizing: border-box; }
@@ -41,10 +40,10 @@
 <body>
   <div id="root"></div>
 
-  <!-- React via CDN (no build tools) -->
+  <!-- React via CDN -->
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
-  <!-- Babel for JSX in-browser (fine for small internal tools) -->
+  <!-- Babel for JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <script type="text/babel">
@@ -261,13 +260,13 @@
       }
       return (
         <div>
-          <Pill>Admin Mode</Pill>
+          <span className="pill">Admin Mode</span>
           <Card title="Admin Controls" actions={
             <>
               <Button onClick={addProduct}>Add Product</Button>
-              <label className="btn" style="cursor:pointer;">
+              <label className="btn" style={{cursor:"pointer"}}>
                 Import CSV
-                <input type="file" accept=".csv" style="display:none" onChange={handleImport} />
+                <input type="file" accept=".csv" style={{display:"none"}} onChange={handleImport} />
               </label>
               <Button onClick={exportCSV}>Export CSV</Button>
               <Button onClick={clearTodaySales}>Clear Today Sales</Button>
@@ -291,20 +290,20 @@
           </Card>
 
           <Card title="Product Catalog (Editable)">
-            <div style={{overflow:auto}}>
+            <div style={{overflow:'auto'}}>
               <table>
                 <thead>
                   <tr>
                     <th>Product</th>
                     <th>Barcode</th>
                     <th>Category</th>
-                    <th class="right">PRICE SOLD</th>
-                    <th class="right">VENDOR COST</th>
-                    <th class="right">STARTING INVENTORY</th>
-                    <th class="right">UNITS SOLD TODAY</th>
-                    <th class="right">ENDING INVENTORY</th>
-                    <th class="right">PRICE SOLD X UNITS SOLD</th>
-                    <th class="right">ENDING INVENTORY (X) VENDOR COST</th>
+                    <th className="right">PRICE SOLD</th>
+                    <th className="right">VENDOR COST</th>
+                    <th className="right">STARTING INVENTORY</th>
+                    <th className="right">UNITS SOLD TODAY</th>
+                    <th className="right">ENDING INVENTORY</th>
+                    <th className="right">PRICE SOLD X UNITS SOLD</th>
+                    <th className="right">ENDING INVENTORY (X) VENDOR COST</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -322,7 +321,7 @@
                         {editingId === p.id ? (
                           <input className="input" value={p.barcode} onChange={e=>updateField(p.id,"barcode",e.target.value)} />
                         ) : (
-                          <code class="code">{p.barcode || "—"}</code>
+                          <code className="code">{p.barcode || "—"}</code>
                         )}
                       </td>
                       <td>
@@ -330,19 +329,19 @@
                           <input className="input" value={p.category||""} onChange={e=>updateField(p.id,"category",e.target.value)} />
                         ) : (p.category || "—")}
                       </td>
-                      <td class="right">
+                      <td className="right">
                         {editingId === p.id ? (
                           <input className="input" type="number" step="0.01" value={p.priceSold}
                                  onChange={e=>updateField(p.id,"priceSold", parseFloat(e.target.value)||0)} />
                         ) : currency(p.priceSold)}
                       </td>
-                      <td class="right">
+                      <td className="right">
                         {editingId === p.id ? (
                           <input className="input" type="number" step="0.01" value={p.vendorCost}
                                  onChange={e=>updateField(p.id,"vendorCost", parseFloat(e.target.value)||0)} />
                         ) : currency(p.vendorCost)}
                       </td>
-                      <td class="right">
+                      <td className="right">
                         {editingId === p.id ? (
                           <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
                             <button className="btn" onClick={()=>adjustStarting(p.id,-1)}>-1</button>
@@ -352,11 +351,11 @@
                           </div>
                         ) : p.startingInventory}
                       </td>
-                      <td class="right">{p.soldToday}</td>
-                      <td class="right">{p.endingInv}</td>
-                      <td class="right">{currency(p.revenueToday)}</td>
-                      <td class="right">{currency(p.endingInvCost)}</td>
-                      <td class="right">
+                      <td className="right">{p.soldToday}</td>
+                      <td className="right">{p.endingInv}</td>
+                      <td className="right">{currency(p.revenueToday)}</td>
+                      <td className="right">{currency(p.endingInvCost)}</td>
+                      <td className="right">
                         {editingId === p.id ? (
                           <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
                             <Button onClick={()=>setEditingId(null)}>Save</Button>
@@ -405,18 +404,18 @@
       return (
         <div className="card">
           <div className="card-title"><h3 style={{margin:0, fontSize:16, fontWeight:600}}>Inventory</h3></div>
-          <div style={{overflow:auto}}>
+          <div style={{overflow:'auto'}}>
             <table>
               <thead>
                 <tr>
                   <th>Product List</th>
-                  <th class="right">PRICE SOLD</th>
-                  <th class="right">VENDOR COST</th>
-                  <th class="right">STARTING INVENTORY</th>
-                  <th class="right">UNITS SOLD TODAY</th>
-                  <th class="right">ENDING INVENTORY</th>
-                  <th class="right">PRICE SOLD X UNITS SOLD</th>
-                  <th class="right">ENDING INVENTORY (X) VENDOR COST</th>
+                  <th className="right">PRICE SOLD</th>
+                  <th className="right">VENDOR COST</th>
+                  <th className="right">STARTING INVENTORY</th>
+                  <th className="right">UNITS SOLD TODAY</th>
+                  <th className="right">ENDING INVENTORY</th>
+                  <th className="right">PRICE SOLD X UNITS SOLD</th>
+                  <th className="right">ENDING INVENTORY (X) VENDOR COST</th>
                 </tr>
               </thead>
               <tbody>
@@ -428,13 +427,13 @@
                         <Pill>{p.barcode || "no barcode"}</Pill>
                       </div>
                     </td>
-                    <td class="right">{currency(p.priceSold)}</td>
-                    <td class="right">{currency(p.vendorCost)}</td>
-                    <td class="right">{p.startingInventory}</td>
-                    <td class="right">{p.soldToday}</td>
-                    <td class="right">{p.endingInv}</td>
-                    <td class="right">{currency(p.revenueToday)}</td>
-                    <td class="right">{currency(p.endingInvCost)}</td>
+                    <td className="right">{currency(p.priceSold)}</td>
+                    <td className="right">{currency(p.vendorCost)}</td>
+                    <td className="right">{p.startingInventory}</td>
+                    <td className="right">{p.soldToday}</td>
+                    <td className="right">{p.endingInv}</td>
+                    <td className="right">{currency(p.revenueToday)}</td>
+                    <td className="right">{currency(p.endingInvCost)}</td>
                   </tr>
                 ))}
               </tbody>
