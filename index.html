@@ -1,173 +1,690 @@
-const TZ = 'America/Chicago';
-const SHEET_SALES = 'Sales';
-const SHEET_CATALOG = 'Catalog';
-const RECIPIENT = 'dev.patel@baywoodhotels.com';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Hotel Inventory & Sales Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#f6f6f7; --card:#fff; --border:#e5e7eb; --text:#111; --muted:#6b7280; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, "Apple Color Emoji","Segoe UI Emoji"; background:var(--bg); color:var(--text); }
+    .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+    header { display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    h1 { font-size: 22px; font-weight: 700; }
+    .btn { border:1px solid var(--border); background:#fff; padding:8px 12px; border-radius:14px; font-size:14px; cursor:pointer; }
+    .btn.primary { background:#111; color:#fff; }
+    .btn:active { transform: scale(.98); }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px; box-shadow: 0 1px 2px rgba(0,0,0,.03); margin-bottom:16px; }
+    .card-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    .input { width:100%; border:1px solid var(--border); border-radius:12px; padding:10px; font-size:14px; }
+    .input[type="number"] { text-align:right; }
+    .grid { display:grid; gap:12px; }
+    @media (min-width: 768px){ .grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; } }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    thead tr { background:#f3f4f6; }
+    th, td { text-align:left; padding:8px; border-bottom:1px solid var(--border); vertical-align: middle; }
+    th.right, td.right { text-align:right; }
+    .pill { display:inline-flex; border:1px solid var(--border); border-radius:999px; padding:2px 8px; font-size:12px; color:#374151; }
+    .summary { display:grid; gap:12px; }
+    @media (min-width:768px){ .summary { grid-template-columns:1fr 1fr 1fr; } }
+    .tile { background:#fff; border:1px solid var(--border); border-radius:16px; padding:12px; }
+    .tile .label { font-size:12px; color:var(--muted); }
+    .tile .value { font-size:18px; font-weight:600; }
+    .muted { color:var(--muted); }
+    .actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.3); display:grid; place-items:center; padding:16px; z-index:1000; }
+    .modal { background:#fff; border:1px solid var(--border); border-radius:16px; width:100%; max-width:420px; padding:16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+    code.code { background:#f3f4f6; padding:2px 4px; border-radius:4px; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
 
-// ===== HTTP ENTRY =====
-function doPost(e) {
-  try {
-    const body = JSON.parse(e.postData.contents || '{}');
-    if (body.type === 'sale') return handleSale(body.payload);
-    if (body.type === 'catalog') return handleCatalogUpsert(body.payload);
-    return json({ ok:false, error:'Unknown type' });
-  } catch (err) {
-    return json({ ok:false, error:String(err) });
-  }
-}
+  <!-- React via CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <!-- Babel for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-function handleSale(ev) {
-  // ev: { ts, hotel, barcode, name, priceSold, qty, revenue }
-  const ss = SpreadsheetApp.getActive();
-  const sh = ss.getSheetByName(SHEET_SALES) || ss.insertSheet(SHEET_SALES);
-  if (sh.getLastRow() === 0) {
-    sh.appendRow(['ts','localDate','hotel','barcode','name','priceSold','qty','revenue']);
-  }
-  const ts = ev.ts || new Date().toISOString();
-  const local = Utilities.formatDate(new Date(ts), TZ, 'yyyy-MM-dd');
-  sh.appendRow([
-    ts, local,
-    ev.hotel || '',
-    ev.barcode || '',
-    ev.name || '',
-    Number(ev.priceSold) || 0,
-    Number(ev.qty) || 0,
-    Number(ev.revenue) || 0
-  ]);
-  return json({ ok:true });
-}
+  <script type="text/babel">
+    const { useEffect, useMemo, useRef, useState } = React;
 
-// Optional: push your catalog from the Admin page (list of products)
-function handleCatalogUpsert(list) {
-  if (!Array.isArray(list)) return json({ ok:false, error:'Payload must be array' });
-  const ss = SpreadsheetApp.getActive();
-  const sh = ss.getSheetByName(SHEET_CATALOG) || ss.insertSheet(SHEET_CATALOG);
-  if (sh.getLastRow() === 0) {
-    sh.appendRow(['barcode','name','priceSold','vendorCost','startingInventory','lastUpdated']);
-  }
-  const now = new Date();
-  const existing = sh.getDataRange().getValues();
-  const index = new Map();
-  for (let i=1;i<existing.length;i++) {
-    const bc = String(existing[i][0]||'');
-    if (bc) index.set(bc, i+1);
-  }
-  list.forEach(p => {
-    const bc = String(p.barcode||'').trim();
-    if (!bc) return;
-    const row = index.get(bc);
-    const values = [bc, p.name||'', Number(p.priceSold)||0, Number(p.vendorCost)||0, Number(p.startingInventory)||0, now];
-    if (row) sh.getRange(row,1,1,6).setValues([values]);
-    else sh.appendRow(values);
-  });
-  return json({ ok:true, updated:list.length });
-}
+    /** =======================
+     *   CONFIG (edit these)
+     *  ======================= */
+    const HOTEL_NAME = "Your Hotel Name";
+    const GAS_WEBAPP_URL = ""; // paste your Apps Script Web App URL
 
-function json(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+    /** Persistence keys */
+    const LS_KEY = "hotel_inventory_v1";
+    const LS_SALES_KEY = "hotel_sales_v1";
+    const LS_ADMIN_PASS = "hotel_admin_pass_v1";
+    const LS_QUEUE = "sales_queue_v1";
+    const LS_LAST_DAY = "last_open_day_v1";
 
-// ===== DAILY EMAIL @ 7AM + ROLL-FORWARD =====
-function emailYesterdayAndRoll() {
-  const ss = SpreadsheetApp.getActive();
-  const sales = ss.getSheetByName(SHEET_SALES);
-  const catalog = ss.getSheetByName(SHEET_CATALOG);
-  if (!sales || !catalog) return;
+    /** Scanner buffer (works even if input loses focus) */
+    let SCAN_BUFFER = "";
+    let SCAN_TIMER = null;
+    const SCAN_TIMEOUT_MS = 50;   // gap >= 50ms ends a cluster
+    const MIN_SCAN_LEN = 6;       // ignore noise
 
-  const y = new Date(new Date().getTime() - 24*60*60*1000);
-  const yKey = Utilities.formatDate(y, TZ, 'yyyy-MM-dd');
+    function attachGlobalScan(handler) {
+      document.addEventListener("keydown", (e) => {
+        clearTimeout(SCAN_TIMER);
 
-  const salesRows = sales.getDataRange().getValues();
-  const catRows = catalog.getDataRange().getValues();
-  if (salesRows.length <= 1 || catRows.length <= 1) return;
+        if (e.key === "Enter") {
+          const code = SCAN_BUFFER.trim();
+          SCAN_BUFFER = "";
+          if (code.length >= MIN_SCAN_LEN) handler(code);
+          return;
+        }
 
-  // Build catalog map
-  const catMap = new Map(); // bc -> {row, name, priceSold, vendorCost, starting}
-  for (let i=1;i<catRows.length;i++) {
-    const [bc,name,priceSold,vendorCost,startingInventory] = catRows[i];
-    if (!bc) continue;
-    catMap.set(String(bc), {
-      row: i+1,
-      name: String(name||''),
-      priceSold: Number(priceSold)||0,
-      vendorCost: Number(vendorCost)||0,
-      starting: Number(startingInventory)||0
-    });
-  }
+        if (/^[0-9A-Za-z\-\.\(\)\s]$/.test(e.key)) {
+          SCAN_BUFFER += e.key;
+        }
 
-  // Aggregate yesterday sales
-  const byBc = new Map(); // bc -> { name, qty, revenue }
-  let totalQty = 0, totalRev = 0;
-  for (let i=1;i<salesRows.length;i++) {
-    const [ts, localDate,, bc, name, priceSold, qty, revenue] = salesRows[i];
-    if (String(localDate) !== yKey) continue;
-    const key = String(bc||'');
-    const rec = byBc.get(key) || { name:String(name||''), qty:0, revenue:0 };
-    rec.qty += Number(qty)||0;
-    rec.revenue += Number(revenue)||0;
-    byBc.set(key, rec);
-    totalQty += Number(qty)||0;
-    totalRev += Number(revenue)||0;
-  }
+        SCAN_TIMER = setTimeout(() => {
+          if (SCAN_BUFFER.length >= MIN_SCAN_LEN) {
+            const code = SCAN_BUFFER.trim();
+            SCAN_BUFFER = "";
+            handler(code);
+          } else {
+            SCAN_BUFFER = "";
+          }
+        }, SCAN_TIMEOUT_MS);
+      });
+    }
 
-  // Compute ending inventory yesterday and roll forward starting
-  const updates = [];
-  const tableRows = [];
-  [...byBc.entries()].forEach(([bc, rec]) => {
-    const cat = catMap.get(bc) || { name: rec.name, starting: 0, vendorCost:0, priceSold:0, row:null };
-    const start = Number(cat.starting)||0;
-    const end = Math.max(0, start - rec.qty);
-    tableRows.push({ name: cat.name || rec.name || '', barcode: bc, start, units: rec.qty, end, revenue: rec.revenue });
-    if (cat.row) updates.push({ row: cat.row, end });
-  });
+    /** Currency + date helpers */
+    const currency = (n) => isNaN(n) ? "-" : n.toLocaleString(undefined, { style:"currency", currency:"USD" });
+    function todayKey(){
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,"0");
+      const day = String(d.getDate()).padStart(2,"0");
+      return `${y}-${m}-${day}`;
+    }
+    const isToday = (ts) => {
+      try { return new Date(ts).toISOString().slice(0,10) === todayKey(); } catch { return false; }
+    };
 
-  tableRows.sort((a,b)=> b.units - a.units);
+    /** Local storage */
+    function loadInventory(){
+      const raw = localStorage.getItem(LS_KEY);
+      if(!raw) return defaultInventory();
+      try { const p = JSON.parse(raw); return Array.isArray(p) ? p : defaultInventory(); }
+      catch { return defaultInventory(); }
+    }
+    function saveInventory(items){ localStorage.setItem(LS_KEY, JSON.stringify(items)); }
 
-  const title = `What sold on ${yKey} — and inventory left`;
-  let html = `<div style="font-family:system-ui,Segoe UI,Arial">
-    <h2>${title}</h2>
-    <table cellspacing="0" cellpadding="6" border="1" style="border-collapse:collapse">
-      <tr>
-        <th align="left">Product</th>
-        <th align="left">Barcode</th>
-        <th align="right">Starting</th>
-        <th align="right">Units Sold</th>
-        <th align="right">Ending</th>
-        <th align="right">Revenue</th>
-      </tr>`;
-  tableRows.forEach(r => {
-    html += `<tr>
-      <td>${esc(r.name)}</td>
-      <td>${esc(r.barcode)}</td>
-      <td align="right">${r.start}</td>
-      <td align="right">${r.units}</td>
-      <td align="right"><b>${r.end}</b></td>
-      <td align="right">$${Number(r.revenue||0).toFixed(2)}</td>
-    </tr>`;
-  });
-  const totalQty = tableRows.reduce((a,r)=>a+r.units,0);
-  const totalRev = tableRows.reduce((a,r)=>a+(r.revenue||0),0);
-  html += `<tr><td colspan="3" align="right"><b>Total</b></td><td align="right"><b>${totalQty}</b></td><td></td><td align="right"><b>$${totalRev.toFixed(2)}</b></td></tr>`;
-  html += `</table></div>`;
+    function loadSales(){
+      const raw = localStorage.getItem(LS_SALES_KEY);
+      if(!raw) return [];
+      try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; }
+      catch { return []; }
+    }
+    function saveSales(sales){ localStorage.setItem(LS_SALES_KEY, JSON.stringify(sales)); }
 
-  if (tableRows.length > 0) {
-    MailApp.sendEmail({ to: RECIPIENT, subject: title, htmlBody: html });
-  }
+    function defaultInventory(){
+      return [
+        { id: crypto.randomUUID(), barcode:"0123456789012", name:"Bottled Water 16oz", priceSold:1.99, vendorCost:0.45, startingInventory:50, category:"Drinks" },
+        { id: crypto.randomUUID(), barcode:"1234567890123", name:"Chips - Classic",    priceSold:2.49, vendorCost:0.65, startingInventory:40, category:"Snacks" },
+        { id: crypto.randomUUID(), barcode:"2345678901234", name:"Chocolate Bar",      priceSold:2.99, vendorCost:0.85, startingInventory:35, category:"Snacks" }
+      ];
+    }
 
-  // Roll forward: set Catalog.startingInventory = yesterday ending
-  if (updates.length) {
-    updates.forEach(u => { catalog.getRange(u.row, 5).setValue(u.end); }); // col 5 = startingInventory
-    catalog.getRange(2, 6, catalog.getLastRow()-1, 1).setValue(new Date()); // col 6 = lastUpdated
-  }
-}
+    function getAdminPass(){ return localStorage.getItem(LS_ADMIN_PASS) || "admin123"; }
+    function setAdminPass(pass){ localStorage.setItem(LS_ADMIN_PASS, pass); }
 
-function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    /** Queue + network */
+    function loadQueue() {
+      try { return JSON.parse(localStorage.getItem(LS_QUEUE) || "[]"); } catch { return []; }
+    }
+    function saveQueue(arr) {
+      localStorage.setItem(LS_QUEUE, JSON.stringify(arr));
+    }
+    async function sendEventToGAS(evt) {
+      if (!GAS_WEBAPP_URL) return true; // no-op until configured
+      try {
+        await fetch(GAS_WEBAPP_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "sale", payload: evt }),
+          mode: "no-cors"
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    async function flushQueue() {
+      if (!GAS_WEBAPP_URL) return;
+      const q = loadQueue();
+      if (!q.length) return;
+      const still = [];
+      for (const evt of q) {
+        const ok = await sendEventToGAS(evt);
+        if (!ok) still.push(evt);
+      }
+      saveQueue(still);
+    }
+    window.addEventListener("online", flushQueue);
 
-// ===== TRIGGER SETUP =====
-function setupDaily7am() {
-  ScriptApp.getProjectTriggers().forEach(t => {
-    if (t.getHandlerFunction() === 'emailYesterdayAndRoll') ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger('emailYesterdayAndRoll')
-    .timeBased().atHour(7).nearMinute(0).inTimezone(TZ).everyDays(1).create();
-}
+    /** Reusable UI */
+    const Button = ({ children, className="", ...props }) => <button {...props} className={"btn "+className}>{children}</button>;
+    const Card = ({ title, actions, children }) => (
+      <div className="card">
+        <div className="card-title">
+          <h3 style={{margin:0, fontSize:16, fontWeight:600}}>{title}</h3>
+          <div className="actions">{actions}</div>
+        </div>
+        {children}
+      </div>
+    );
+    const Pill = ({children}) => <span className="pill">{children}</span>;
+    const SummaryTile = ({ label, value }) => (
+      <div className="tile">
+        <div className="label">{label}</div>
+        <div className="value">{value}</div>
+      </div>
+    );
+
+    function PasswordModal({ onClose, onSuccess }){
+      const [pass, setPass] = useState("");
+      const [error, setError] = useState("");
+      function submit(){
+        if(pass === getAdminPass()) onSuccess();
+        else setError("Incorrect password");
+      }
+      return (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3 style={{marginTop:0}}>Enter Admin Password</h3>
+            <input className="input" type="password" placeholder="Password" value={pass} onChange={e=>setPass(e.target.value)} />
+            {error && <div style={{color:"#dc2626", marginTop:6, fontSize:14}}>{error}</div>}
+            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}>
+              <Button onClick={onClose}>Cancel</Button>
+              <Button className="primary" onClick={submit}>Unlock</Button>
+            </div>
+            <div className="muted" style={{fontSize:12, marginTop:8}}>Default password is <b>admin123</b>. Change it in Admin → Change Password.</div>
+          </div>
+        </div>
+      );
+    }
+
+    function ChangePasswordButton(){
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <Button onClick={()=>setOpen(true)}>Change Password</Button>
+          {open && <ChangePasswordModal onClose={()=>setOpen(false)} />}
+        </>
+      );
+    }
+    function ChangePasswordModal({ onClose }){
+      const [current, setCurrent] = useState("");
+      const [next, setNext] = useState("");
+      const [confirm, setConfirm] = useState("");
+      const [error, setError] = useState("");
+      function save(){
+        if(current !== getAdminPass()) return setError("Current password is incorrect");
+        if(!next) return setError("New password cannot be empty");
+        if(next !== confirm) return setError("Passwords do not match");
+        setAdminPass(next);
+        onClose();
+      }
+      return (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3 style={{marginTop:0}}>Change Admin Password</h3>
+            <div className="grid">
+              <input className="input" type="password" placeholder="Current password" value={current} onChange={e=>setCurrent(e.target.value)} />
+              <input className="input" type="password" placeholder="New password" value={next} onChange={e=>setNext(e.target.value)} />
+              <input className="input" type="password" placeholder="Confirm new password" value={confirm} onChange={e=>setConfirm(e.target.value)} />
+              {error && <div style={{color:"#dc2626"}}>{error}</div>}
+            </div>
+            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}>
+              <Button onClick={onClose}>Cancel</Button>
+              <Button className="primary" onClick={save}>Save</Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /** Front Desk (scan) — NO vendor cost columns here */
+    function FrontDeskView({ products, recordSale, undoLastSale, filter, setFilter, totals }){
+      const [last, setLast] = useState(null);
+      const inputRef = useRef(null);
+      useEffect(()=>{ inputRef.current?.focus(); },[]);
+      function handleScan(e){
+        if(e.key === "Enter"){
+          const code = e.currentTarget.value.trim();
+          onBarcode(code);
+          e.currentTarget.value = "";
+        }
+      }
+      function onBarcode(code){
+        const prod = products.find(p => p.barcode === code);
+        if(prod){
+          recordSale(code, 1, prod);
+          setLast({ code, name: prod.name, price: prod.priceSold });
+        } else {
+          setLast({ code, name: "Unknown barcode", price: 0 });
+        }
+      }
+      useEffect(() => { attachGlobalScan(onBarcode); }, []);
+      return (
+        <div>
+          <Card title="Scan Items" actions={<Button onClick={undoLastSale}>Undo Last Sale (Today)</Button>}>
+            <div className="grid cols-3">
+              <div style={{gridColumn:"span 2"}}>
+                <div style={{fontSize:13, marginBottom:6}}>Barcode Input</div>
+                <input ref={inputRef} className="input" placeholder="Click here and scan a product (press Enter)" onKeyDown={handleScan} />
+                {last && (
+                  <div className="muted" style={{fontSize:14, marginTop:8}}>
+                    Last Scan: <b>{last.name}</b> ({last.code}) • {currency(last.price)}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div style={{fontSize:13, marginBottom:6}}>Quick Search</div>
+                <input className="input" placeholder="Filter by name, barcode, category"
+                       value={filter} onChange={e=>setFilter(e.target.value)} />
+              </div>
+            </div>
+          </Card>
+
+          <InventoryTableFront products={products} />
+
+          <Card title="Today Summary">
+            <div className="summary">
+              <SummaryTile label="Units Sold Today" value={totals.unitsSold} />
+              <SummaryTile label="Revenue (Price × Units)" value={currency(totals.revenue)} />
+              <!-- No ending inventory value here -->
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    /** Admin — keeps Vendor Cost and ending inventory value (vendor cost) */
+    function AdminView({ products, inventory, setInventory, filter, setFilter, addProduct, exportCSV, importCSV, sales, setSales, totals, setTab, setAdminUnlocked }){
+      const [editingId, setEditingId] = useState(null);
+      function updateField(id, field, value){
+        setInventory(prev => prev.map(p => p.id === id ? ({...p, [field]: value}) : p));
+      }
+      function removeProduct(id){
+        if(!confirm("Remove this product?")) return;
+        setInventory(prev => prev.filter(p => p.id !== id));
+      }
+      function adjustStarting(id, delta){
+        setInventory(prev => prev.map(p => p.id === id ? ({...p, startingInventory: Math.max(0,(p.startingInventory||0)+delta)}) : p));
+      }
+      function clearTodaySales(){
+        if(!confirm("Clear today’s sales events? (Only today)")) return;
+        const day = todayKey();
+        setSales(prev => prev.filter(s => s.ts.slice(0,10) !== day));
+      }
+      function handleImport(ev){
+        const file = ev.target.files?.[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = () => importCSV(String(reader.result||""));
+        reader.readAsText(file);
+        ev.target.value = "";
+      }
+      return (
+        <div>
+          <span className="pill">Admin Mode</span>
+          <Card title="Admin Controls" actions={
+            <>
+              <Button onClick={addProduct}>Add Product</Button>
+              <label className="btn" style={{cursor:"pointer"}}>
+                Import CSV
+                <input type="file" accept=".csv" style={{display:"none"}} onChange={handleImport} />
+              </label>
+              <Button onClick={exportCSV}>Export CSV</Button>
+              <Button onClick={clearTodaySales}>Clear Today Sales</Button>
+              <ChangePasswordButton />
+            </>
+          }>
+            <div className="grid cols-3">
+              <div style={{gridColumn:"span 2"}}>
+                <div style={{fontSize:13, marginBottom:6}}>Search / Filter</div>
+                <input className="input" placeholder="Filter by name, barcode, category"
+                       value={filter} onChange={e=>setFilter(e.target.value)} />
+              </div>
+              <div style={{display:"flex", alignItems:"flex-end", justifyContent:"flex-end"}}>
+                <div style={{textAlign:"right", fontSize:14}}>
+                  <div><b>Units Sold Today:</b> {totals.unitsSold}</div>
+                  <div><b>Revenue Today:</b> {currency(totals.revenue)}</div>
+                  <div><b>Ending Inventory Value (Vendor Cost):</b> {currency(products.reduce((a,p)=>a+p.endingInvCost,0))}</div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <Card title="Product Catalog (Editable)">
+            <div style={{overflow:'auto'}}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Barcode</th>
+                    <th>Category</th>
+                    <th className="right">PRICE SOLD</th>
+                    <th className="right">VENDOR COST</th>
+                    <th className="right">STARTING INVENTORY</th>
+                    <th className="right">UNITS SOLD TODAY</th>
+                    <th className="right">ENDING INVENTORY</th>
+                    <th className="right">PRICE SOLD × UNITS SOLD</th>
+                    <th className="right">ENDING INVENTORY (×) VENDOR COST</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map(p => (
+                    <tr key={p.id}>
+                      <td>
+                        {editingId === p.id ? (
+                          <input className="input" value={p.name} onChange={e=>updateField(p.id,"name",e.target.value)} />
+                        ) : (
+                          <div style={{fontWeight:600}}>{p.name}</div>
+                        )}
+                      </td>
+                      <td>
+                        {editingId === p.id ? (
+                          <input className="input" value={p.barcode} onChange={e=>updateField(p.id,"barcode",e.target.value)} />
+                        ) : (
+                          <code className="code">{p.barcode || "—"}</code>
+                        )}
+                      </td>
+                      <td>
+                        {editingId === p.id ? (
+                          <input className="input" value={p.category||""} onChange={e=>updateField(p.id,"category",e.target.value)} />
+                        ) : (p.category || "—")}
+                      </td>
+                      <td className="right">
+                        {editingId === p.id ? (
+                          <input className="input" type="number" step="0.01" value={p.priceSold}
+                                 onChange={e=>updateField(p.id,"priceSold", parseFloat(e.target.value)||0)} />
+                        ) : currency(p.priceSold)}
+                      </td>
+                      <td className="right">
+                        {editingId === p.id ? (
+                          <input className="input" type="number" step="0.01" value={p.vendorCost}
+                                 onChange={e=>updateField(p.id,"vendorCost", parseFloat(e.target.value)||0)} />
+                        ) : currency(p.vendorCost)}
+                      </td>
+                      <td className="right">
+                        {editingId === p.id ? (
+                          <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
+                            <button className="btn" onClick={()=>adjustStarting(p.id,-1)}>-1</button>
+                            <input className="input" type="number" value={p.startingInventory}
+                                   onChange={e=>updateField(p.id,"startingInventory", parseInt(e.target.value)||0)} />
+                            <button className="btn" onClick={()=>adjustStarting(p.id,1)}>+1</button>
+                          </div>
+                        ) : p.startingInventory}
+                      </td>
+                      <td className="right">{p.soldToday}</td>
+                      <td className="right">{p.endingInv}</td>
+                      <td className="right">{currency(p.revenueToday)}</td>
+                      <td className="right">{currency(p.endingInvCost)}</td>
+                      <td className="right">
+                        {editingId === p.id ? (
+                          <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
+                            <Button onClick={()=>setEditingId(null)}>Save</Button>
+                            <Button onClick={()=>removeProduct(p.id)}>Delete</Button>
+                          </div>
+                        ) : (
+                          <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
+                            <Button onClick={()=>setEditingId(p.id)}>Edit</Button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <Card title="Day Close Summary (Today)">
+            <DayClose products={products} />
+          </Card>
+
+          <div style={{display:"flex", justifyContent:"flex-end"}}>
+            <Button onClick={()=>{ setAdminUnlocked(false); setTab('front'); }}>
+              Lock Admin & Return to Front Desk
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    function DayClose({ products }){
+      const totalUnits = products.reduce((a,p)=>a+p.soldToday,0);
+      const totalRevenue = products.reduce((a,p)=>a+p.revenueToday,0);
+      const totalEndCost = products.reduce((a,p)=>a+p.endingInvCost,0);
+      return (
+        <div className="summary">
+          <SummaryTile label="Units Sold Today" value={totalUnits} />
+          <SummaryTile label="Revenue (Price × Units)" value={currency(totalRevenue)} />
+          <SummaryTile label="Ending Inventory Value (Vendor Cost)" value={currency(totalEndCost)} />
+        </div>
+      );
+    }
+
+    /** FRONT DESK TABLE (no cost columns) */
+    function InventoryTableFront({ products }){
+      return (
+        <div className="card">
+          <div className="card-title"><h3 style={{margin:0, fontSize:16, fontWeight:600}}>Inventory</h3></div>
+          <div style={{overflow:'auto'}}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Product List</th>
+                  <th className="right">PRICE SOLD</th>
+                  <th className="right">STARTING INVENTORY</th>
+                  <th className="right">UNITS SOLD TODAY</th>
+                  <th className="right">ENDING INVENTORY</th>
+                  <th className="right">PRICE SOLD × UNITS SOLD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map(p => (
+                  <tr key={p.id}>
+                    <td>
+                      <div style={{display:"flex", alignItems:"center", gap:8}}>
+                        <div style={{fontWeight:600}}>{p.name}</div>
+                        <Pill>{p.barcode || "no barcode"}</Pill>
+                      </div>
+                    </td>
+                    <td className="right">{currency(p.priceSold)}</td>
+                    <td className="right">{p.startingInventory}</td>
+                    <td className="right">{p.soldToday}</td>
+                    <td className="right">{p.endingInv}</td>
+                    <td className="right">{currency(p.revenueToday)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    /** App */
+    function App(){
+      const [tab, setTab] = useState("front"); // 'front' | 'admin'
+      const [inventory, setInventory] = useState(loadInventory());
+      const [sales, setSales] = useState(loadSales());
+      const [filter, setFilter] = useState("");
+      const [adminUnlocked, setAdminUnlocked] = useState(false);
+      const [showPassModal, setShowPassModal] = useState(false);
+
+      useEffect(()=>saveInventory(inventory),[inventory]);
+      useEffect(()=>saveSales(sales),[sales]);
+
+      // flush queued events if any (offline support)
+      useEffect(() => { flushQueue(); }, []);
+
+      // Daily reset of local "today" counters when date changes
+      useEffect(() => {
+        const today = todayKey();
+        const last = localStorage.getItem(LS_LAST_DAY);
+        if (last && last !== today) {
+          setSales([]); // clear local today's list; Google Sheet has full history
+        }
+        localStorage.setItem(LS_LAST_DAY, today);
+      }, []);
+
+      const todaySalesMap = useMemo(()=>{
+        const map = new Map();
+        for(const s of sales){
+          if(!isToday(s.ts)) continue;
+          map.set(s.barcode, (map.get(s.barcode)||0) + (s.qty||0));
+        }
+        return map;
+      },[sales]);
+
+      const products = useMemo(()=>{
+        return inventory
+          .map(p => {
+            const soldToday = todaySalesMap.get(p.barcode) || 0;
+            const endingInv = Math.max(0, (p.startingInventory||0) - soldToday);
+            const revenueToday = (p.priceSold||0) * soldToday;
+            const endingInvCost = (p.vendorCost||0) * endingInv; // Admin uses this
+            return {...p, soldToday, endingInv, revenueToday, endingInvCost};
+          })
+          .filter(p => {
+            const q = filter.trim().toLowerCase();
+            if(!q) return true;
+            return p.name.toLowerCase().includes(q)
+              || (p.barcode||"").toLowerCase().includes(q)
+              || (p.category||"").toLowerCase().includes(q);
+          });
+      }, [inventory, todaySalesMap, filter]);
+
+      const totals = useMemo(()=>{
+        let unitsSold=0, revenue=0;
+        for(const p of products){ unitsSold+=p.soldToday; revenue+=p.revenueToday; }
+        return { unitsSold, revenue };
+      },[products]);
+
+      async function recordSale(barcode, qty=1, prod=null){
+        if(!barcode) return;
+        const found = prod || inventory.find(p=>p.barcode===barcode);
+        if(!found) return;
+        const ts = new Date().toISOString();
+        const evt = { ts, hotel: HOTEL_NAME, barcode, name: found.name, priceSold: found.priceSold, qty, revenue: (found.priceSold||0)*qty };
+
+        // Local UI update
+        setSales(prev => [...prev, { barcode, qty, ts }]);
+
+        // Queue + try send
+        const q = loadQueue(); q.push(evt); saveQueue(q);
+        const ok = await sendEventToGAS(evt);
+        if (ok) flushQueue();
+      }
+      function undoLastSale(){
+        const idx = [...sales].map((s,i)=>({s,i})).filter(({s})=>isToday(s.ts)).map(({i})=>i).pop();
+        if(idx===undefined) return;
+        const copy = [...sales]; copy.splice(idx,1); setSales(copy);
+        // (For simplicity we don't delete from the Sheet)
+      }
+      function addProduct(){
+        setInventory(prev => [...prev, { id:crypto.randomUUID(), barcode:"", name:"New Product", priceSold:0, vendorCost:0, startingInventory:0, category:"" }]);
+      }
+      function importCSV(text){
+        const rows = text.split(/\r?\n/).filter(Boolean); if(!rows.length) return;
+        const headers = rows[0].split(",").map(h=>h.trim());
+        const idx = (k)=> headers.indexOf(k);
+        const out = [];
+        for(let i=1;i<rows.length;i++){
+          const cols = rows[i].split(",");
+          if(!cols.length) continue;
+          out.push({
+            id: crypto.randomUUID(),
+            barcode: cols[idx("barcode")]?.trim() || "",
+            name: cols[idx("name")]?.trim() || "",
+            priceSold: parseFloat(cols[idx("priceSold")]) || 0,
+            vendorCost: parseFloat(cols[idx("vendorCost")]) || 0,
+            startingInventory: parseInt(cols[idx("startingInventory")]) || 0,
+            category: cols[idx("category")]?.trim() || "",
+          });
+        }
+        if(out.length) setInventory(out);
+      }
+      function exportCSV(){
+        const headers = ["barcode","name","priceSold","vendorCost","startingInventory","category"];
+        const body = inventory.map(p => [p.barcode,p.name,p.priceSold,p.vendorCost,p.startingInventory,p.category||""].map(x=>String(x).replaceAll(",","")).join(",")).join("\n");
+        const csv = headers.join(",") + "\n" + body;
+        const blob = new Blob([csv], {type:"text/csv"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `inventory_${todayKey()}.csv`; a.click();
+        URL.revokeObjectURL(url);
+      }
+      function openAdmin(){
+        if(adminUnlocked){ setTab("admin"); }
+        else { setShowPassModal(true); }
+      }
+
+      return (
+        <div className="container">
+          <header>
+            <h1>Hotel Inventory & Sales Tracker</h1>
+            <div className="actions">
+              <Button className={tab==="front" ? "primary":""} onClick={()=>setTab("front")}>Front Desk (Scan)</Button>
+              <Button className={tab==="admin" ? "primary":""} onClick={openAdmin}>Admin</Button>
+            </div>
+          </header>
+
+          {tab === "front" ? (
+            <FrontDeskView
+              products={products}
+              recordSale={recordSale}
+              undoLastSale={undoLastSale}
+              filter={filter}
+              setFilter={setFilter}
+              totals={totals}
+            />
+          ) : (
+            <AdminView
+              products={products}
+              inventory={inventory}
+              setInventory={setInventory}
+              filter={filter}
+              setFilter={setFilter}
+              addProduct={addProduct}
+              exportCSV={exportCSV}
+              importCSV={importCSV}
+              sales={sales}
+              setSales={setSales}
+              totals={totals}
+              setTab={setTab}
+              setAdminUnlocked={setAdminUnlocked}
+            />
+          )}
+
+          {showPassModal && (
+            <PasswordModal
+              onClose={()=>setShowPassModal(false)}
+              onSuccess={()=>{
+                setAdminUnlocked(true);
+                setShowPassModal(false);
+                setTab("admin");
+              }}
+            />
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
