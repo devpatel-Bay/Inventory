@@ -33,8 +33,10 @@
     .muted { color:var(--muted); }
     .actions { display:flex; gap:8px; flex-wrap:wrap; }
     .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.3); display:grid; place-items:center; padding:16px; z-index:1000; }
-    .modal { background:#fff; border:1px solid var(--border); border-radius:16px; width:100%; max-width:420px; padding:16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+    .modal { background:#fff; border:1px solid var(--border); border-radius:16px; width:100%; max-width:480px; padding:16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
     code.code { background:#f3f4f6; padding:2px 4px; border-radius:4px; font-size:12px; }
+    .setup { display:flex; gap:8px; align-items:center; }
+    .small { font-size:12px; color:var(--muted); }
   </style>
 </head>
 <body>
@@ -50,44 +52,42 @@
     const { useEffect, useMemo, useRef, useState } = React;
 
     /** =======================
-     *   CONFIG (edit these)
+     *   CONFIG (quick edit)
      *  ======================= */
-    const HOTEL_NAME = "Your Hotel Name";
-    const GAS_WEBAPP_URL = ""; // paste your Apps Script Web App URL
+    const DEFAULT_HOTEL_NAME = "Your Hotel Name";
+    // You can paste your Apps Script URL into the Setup > “Save URL” box; it persists to localStorage.
 
-    /** Persistence keys */
-    const LS_KEY = "hotel_inventory_v1";
-    const LS_SALES_KEY = "hotel_sales_v1";
+    /** Local keys */
+    const LS_INV = "hotel_inventory_v1";
+    const LS_SALES = "hotel_sales_v1";
     const LS_ADMIN_PASS = "hotel_admin_pass_v1";
     const LS_QUEUE = "sales_queue_v1";
     const LS_LAST_DAY = "last_open_day_v1";
+    const LS_HOTEL = "hotel_name_v1";
+    const LS_GAS = "gas_webapp_url_v1";
 
     /** Scanner buffer (works even if input loses focus) */
     let SCAN_BUFFER = "";
     let SCAN_TIMER = null;
-    const SCAN_TIMEOUT_MS = 50;   // gap >= 50ms ends a cluster
-    const MIN_SCAN_LEN = 6;       // ignore noise
+    const SCAN_TIMEOUT_MS = 50;
+    const MIN_SCAN_LEN = 6;
 
     function attachGlobalScan(handler) {
       document.addEventListener("keydown", (e) => {
         clearTimeout(SCAN_TIMER);
-
         if (e.key === "Enter") {
           const code = SCAN_BUFFER.trim();
           SCAN_BUFFER = "";
           if (code.length >= MIN_SCAN_LEN) handler(code);
           return;
         }
-
         if (/^[0-9A-Za-z\-\.\(\)\s]$/.test(e.key)) {
           SCAN_BUFFER += e.key;
         }
-
         SCAN_TIMER = setTimeout(() => {
           if (SCAN_BUFFER.length >= MIN_SCAN_LEN) {
             const code = SCAN_BUFFER.trim();
-            SCAN_BUFFER = "";
-            handler(code);
+            SCAN_BUFFER = ""; handler(code);
           } else {
             SCAN_BUFFER = "";
           }
@@ -95,82 +95,47 @@
       });
     }
 
-    /** Currency + date helpers */
+    /** Helpers */
     const currency = (n) => isNaN(n) ? "-" : n.toLocaleString(undefined, { style:"currency", currency:"USD" });
-    function todayKey(){
-      const d = new Date();
-      const y = d.getFullYear();
-      const m = String(d.getMonth()+1).padStart(2,"0");
-      const day = String(d.getDate()).padStart(2,"0");
-      return `${y}-${m}-${day}`;
-    }
-    const isToday = (ts) => {
-      try { return new Date(ts).toISOString().slice(0,10) === todayKey(); } catch { return false; }
+    const todayKey = () => {
+      const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
     };
+    const isToday = (ts) => { try { return new Date(ts).toISOString().slice(0,10) === todayKey(); } catch { return false; } };
 
-    /** Local storage */
-    function loadInventory(){
-      const raw = localStorage.getItem(LS_KEY);
-      if(!raw) return defaultInventory();
-      try { const p = JSON.parse(raw); return Array.isArray(p) ? p : defaultInventory(); }
-      catch { return defaultInventory(); }
-    }
-    function saveInventory(items){ localStorage.setItem(LS_KEY, JSON.stringify(items)); }
-
-    function loadSales(){
-      const raw = localStorage.getItem(LS_SALES_KEY);
-      if(!raw) return [];
-      try { const p = JSON.parse(raw); return Array.isArray(p) ? p : []; }
-      catch { return []; }
-    }
-    function saveSales(sales){ localStorage.setItem(LS_SALES_KEY, JSON.stringify(sales)); }
-
-    function defaultInventory(){
-      return [
-        { id: crypto.randomUUID(), barcode:"0123456789012", name:"Bottled Water 16oz", priceSold:1.99, vendorCost:0.45, startingInventory:50, category:"Drinks" },
-        { id: crypto.randomUUID(), barcode:"1234567890123", name:"Chips - Classic",    priceSold:2.49, vendorCost:0.65, startingInventory:40, category:"Snacks" },
-        { id: crypto.randomUUID(), barcode:"2345678901234", name:"Chocolate Bar",      priceSold:2.99, vendorCost:0.85, startingInventory:35, category:"Snacks" }
-      ];
-    }
-
-    function getAdminPass(){ return localStorage.getItem(LS_ADMIN_PASS) || "admin123"; }
-    function setAdminPass(pass){ localStorage.setItem(LS_ADMIN_PASS, pass); }
+    /** Persistence */
+    const loadInventory = () => {
+      try { return JSON.parse(localStorage.getItem(LS_INV) || "[]"); } catch { return []; }
+    };
+    const saveInventory = (x) => localStorage.setItem(LS_INV, JSON.stringify(x));
+    const loadSales = () => { try { return JSON.parse(localStorage.getItem(LS_SALES) || "[]"); } catch { return []; } };
+    const saveSales = (x) => localStorage.setItem(LS_SALES, JSON.stringify(x));
+    const getAdminPass = () => localStorage.getItem(LS_ADMIN_PASS) || "admin123";
+    const setAdminPass = (p) => localStorage.setItem(LS_ADMIN_PASS, p);
+    const getHotelName = () => localStorage.getItem(LS_HOTEL) || DEFAULT_HOTEL_NAME;
+    const setHotelName = (n) => localStorage.setItem(LS_HOTEL, n);
+    const getGAS = () => localStorage.getItem(LS_GAS) || "";
+    const setGAS = (u) => localStorage.setItem(LS_GAS, u);
 
     /** Queue + network */
-    function loadQueue() {
-      try { return JSON.parse(localStorage.getItem(LS_QUEUE) || "[]"); } catch { return []; }
-    }
-    function saveQueue(arr) {
-      localStorage.setItem(LS_QUEUE, JSON.stringify(arr));
-    }
-    async function sendEventToGAS(evt) {
-      if (!GAS_WEBAPP_URL) return true; // no-op until configured
+    const loadQueue = () => { try { return JSON.parse(localStorage.getItem(LS_QUEUE) || "[]"); } catch { return []; } };
+    const saveQueue = (a) => localStorage.setItem(LS_QUEUE, JSON.stringify(a));
+    async function sendToGAS(evt) {
+      const url = getGAS(); if (!url) return true;
       try {
-        await fetch(GAS_WEBAPP_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "sale", payload: evt }),
-          mode: "no-cors"
-        });
+        await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(evt), mode:"no-cors" });
         return true;
-      } catch {
-        return false;
-      }
+      } catch { return false; }
     }
     async function flushQueue() {
-      if (!GAS_WEBAPP_URL) return;
-      const q = loadQueue();
-      if (!q.length) return;
+      const url = getGAS(); if (!url) return;
+      const q = loadQueue(); if (!q.length) return;
       const still = [];
-      for (const evt of q) {
-        const ok = await sendEventToGAS(evt);
-        if (!ok) still.push(evt);
-      }
+      for (const e of q) { const ok = await sendToGAS(e); if (!ok) still.push(e); }
       saveQueue(still);
     }
     window.addEventListener("online", flushQueue);
 
-    /** Reusable UI */
+    /** Small UI atoms */
     const Button = ({ children, className="", ...props }) => <button {...props} className={"btn "+className}>{children}</button>;
     const Card = ({ title, actions, children }) => (
       <div className="card">
@@ -182,20 +147,60 @@
       </div>
     );
     const Pill = ({children}) => <span className="pill">{children}</span>;
-    const SummaryTile = ({ label, value }) => (
-      <div className="tile">
-        <div className="label">{label}</div>
-        <div className="value">{value}</div>
-      </div>
-    );
+    const SummaryTile = ({ label, value }) => <div className="tile"><div className="label">{label}</div><div className="value">{value}</div></div>;
+
+    /** Setup modal (paste/save GAS URL + hotel name + test ping) */
+    function SetupModal({ onClose }) {
+      const [hotel, setHotel] = useState(getHotelName());
+      const [url, setUrl] = useState(getGAS());
+      const [msg, setMsg] = useState("");
+      async function saveAll(){
+        setHotelName(hotel.trim() || DEFAULT_HOTEL_NAME);
+        setGAS(url.trim());
+        setMsg("Saved! Try 'Send test ping' to verify.");
+      }
+      async function testPing(){
+        if (!url.trim()) { setMsg("Paste your Web App URL first."); return; }
+        setMsg("Sending test ping…");
+        const ok = await sendToGAS({ type:"sale", payload:{
+          ts: new Date().toISOString(),
+          hotel,
+          barcode: "TEST",
+          name: "Ping",
+          priceSold: 0,
+          qty: 0,
+          revenue: 0
+        }});
+        setMsg(ok ? "Ping sent (check Sales tab for a TEST row)" : "Ping failed (check deployment/permissions).");
+      }
+      return (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <h3 style={{marginTop:0}}>Setup</h3>
+            <div className="setup">
+              <label style={{width:"120px"}}>Hotel name</label>
+              <input className="input" value={hotel} onChange={e=>setHotel(e.target.value)} />
+            </div>
+            <div className="setup" style={{marginTop:8}}>
+              <label style={{width:"120px"}}>Apps Script URL</label>
+              <input className="input" placeholder="https://script.google.com/macros/s/..." value={url} onChange={e=>setUrl(e.target.value)} />
+            </div>
+            <div className="small" style={{marginTop:8}}>Paste the Web App URL from your Sheet’s Apps Script deployment.</div>
+            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}>
+              <Button onClick={saveAll}>Save URL</Button>
+              <Button onClick={testPing}>Send test ping</Button>
+              <Button className="primary" onClick={onClose}>Close</Button>
+            </div>
+            {msg && <div className="small" style={{marginTop:8}}>{msg}</div>}
+          </div>
+        </div>
+      );
+    }
 
     function PasswordModal({ onClose, onSuccess }){
       const [pass, setPass] = useState("");
       const [error, setError] = useState("");
-      function submit(){
-        if(pass === getAdminPass()) onSuccess();
-        else setError("Incorrect password");
-      }
+      function submit(){ if(pass === getAdminPass()) onSuccess(); else setError("Incorrect password"); }
       return (
         <div className="modal-backdrop">
           <div className="modal">
@@ -206,21 +211,12 @@
               <Button onClick={onClose}>Cancel</Button>
               <Button className="primary" onClick={submit}>Unlock</Button>
             </div>
-            <div className="muted" style={{fontSize:12, marginTop:8}}>Default password is <b>admin123</b>. Change it in Admin → Change Password.</div>
+            <div className="small" style={{marginTop:8}}>Default password is <b>admin123</b>. Change it in Admin → Change Password.</div>
           </div>
         </div>
       );
     }
 
-    function ChangePasswordButton(){
-      const [open, setOpen] = useState(false);
-      return (
-        <>
-          <Button onClick={()=>setOpen(true)}>Change Password</Button>
-          {open && <ChangePasswordModal onClose={()=>setOpen(false)} />}
-        </>
-      );
-    }
     function ChangePasswordModal({ onClose }){
       const [current, setCurrent] = useState("");
       const [next, setNext] = useState("");
@@ -230,8 +226,7 @@
         if(current !== getAdminPass()) return setError("Current password is incorrect");
         if(!next) return setError("New password cannot be empty");
         if(next !== confirm) return setError("Passwords do not match");
-        setAdminPass(next);
-        onClose();
+        setAdminPass(next); onClose();
       }
       return (
         <div className="modal-backdrop">
@@ -252,6 +247,11 @@
       );
     }
 
+    function ChangePasswordButton(){
+      const [open, setOpen] = useState(false);
+      return (<>{open && <ChangePasswordModal onClose={()=>setOpen(false)} />}<Button onClick={()=>setOpen(true)}>Change Password</Button></>);
+    }
+
     /** Front Desk (scan) — NO vendor cost columns here */
     function FrontDeskView({ products, recordSale, undoLastSale, filter, setFilter, totals }){
       const [last, setLast] = useState(null);
@@ -260,8 +260,7 @@
       function handleScan(e){
         if(e.key === "Enter"){
           const code = e.currentTarget.value.trim();
-          onBarcode(code);
-          e.currentTarget.value = "";
+          onBarcode(code); e.currentTarget.value = "";
         }
       }
       function onBarcode(code){
@@ -281,16 +280,11 @@
               <div style={{gridColumn:"span 2"}}>
                 <div style={{fontSize:13, marginBottom:6}}>Barcode Input</div>
                 <input ref={inputRef} className="input" placeholder="Click here and scan a product (press Enter)" onKeyDown={handleScan} />
-                {last && (
-                  <div className="muted" style={{fontSize:14, marginTop:8}}>
-                    Last Scan: <b>{last.name}</b> ({last.code}) • {currency(last.price)}
-                  </div>
-                )}
+                {last && <div className="small" style={{marginTop:8}}>Last Scan: <b>{last.name}</b> ({last.code}) • {currency(last.price)}</div>}
               </div>
               <div>
                 <div style={{fontSize:13, marginBottom:6}}>Quick Search</div>
-                <input className="input" placeholder="Filter by name, barcode, category"
-                       value={filter} onChange={e=>setFilter(e.target.value)} />
+                <input className="input" placeholder="Filter by name, barcode, category" value={filter} onChange={e=>setFilter(e.target.value)} />
               </div>
             </div>
           </Card>
@@ -301,39 +295,38 @@
             <div className="summary">
               <SummaryTile label="Units Sold Today" value={totals.unitsSold} />
               <SummaryTile label="Revenue (Price × Units)" value={currency(totals.revenue)} />
-              <!-- No ending inventory value here -->
             </div>
           </Card>
         </div>
       );
     }
 
-    /** Admin — keeps Vendor Cost and ending inventory value (vendor cost) */
+    /** Admin — keeps Vendor Cost and shows ending inventory value (vendor cost) */
     function AdminView({ products, inventory, setInventory, filter, setFilter, addProduct, exportCSV, importCSV, sales, setSales, totals, setTab, setAdminUnlocked }){
       const [editingId, setEditingId] = useState(null);
-      function updateField(id, field, value){
-        setInventory(prev => prev.map(p => p.id === id ? ({...p, [field]: value}) : p));
-      }
-      function removeProduct(id){
-        if(!confirm("Remove this product?")) return;
-        setInventory(prev => prev.filter(p => p.id !== id));
-      }
-      function adjustStarting(id, delta){
-        setInventory(prev => prev.map(p => p.id === id ? ({...p, startingInventory: Math.max(0,(p.startingInventory||0)+delta)}) : p));
-      }
+      function updateField(id, field, value){ setInventory(prev => prev.map(p => p.id === id ? ({...p, [field]: value}) : p)); }
+      function removeProduct(id){ if(!confirm("Remove this product?")) return; setInventory(prev => prev.filter(p => p.id !== id)); }
+      function adjustStarting(id, delta){ setInventory(prev => prev.map(p => p.id===id ? ({...p, startingInventory: Math.max(0,(p.startingInventory||0)+delta)}) : p)); }
       function clearTodaySales(){
-        if(!confirm("Clear today’s sales events? (Only today)")) return;
-        const day = todayKey();
-        setSales(prev => prev.filter(s => s.ts.slice(0,10) !== day));
+        if(!confirm("Clear today’s sales (today only)?")) return;
+        const day = todayKey(); setSales(prev => prev.filter(s => s.ts.slice(0,10) !== day));
       }
       function handleImport(ev){
-        const file = ev.target.files?.[0];
-        if(!file) return;
-        const reader = new FileReader();
-        reader.onload = () => importCSV(String(reader.result||""));
-        reader.readAsText(file);
-        ev.target.value = "";
+        const f = ev.target.files?.[0]; if(!f) return;
+        const r = new FileReader(); r.onload = () => importCSV(String(r.result||"")); r.readAsText(f); ev.target.value = "";
       }
+
+      async function syncCatalog(){
+        const url = getGAS(); if(!url){ alert("Add Apps Script URL in Setup first."); return; }
+        // send current inventory to /catalog
+        const payload = inventory.map(p => ({
+          barcode: p.barcode||"", name: p.name||"", priceSold: p.priceSold||0,
+          vendorCost: p.vendorCost||0, startingInventory: p.startingInventory||0
+        }));
+        await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ type:"catalog", payload }), mode:"no-cors" });
+        alert("Catalog sync sent. Check the 'Catalog' tab.");
+      }
+
       return (
         <div>
           <span className="pill">Admin Mode</span>
@@ -341,19 +334,18 @@
             <>
               <Button onClick={addProduct}>Add Product</Button>
               <label className="btn" style={{cursor:"pointer"}}>
-                Import CSV
-                <input type="file" accept=".csv" style={{display:"none"}} onChange={handleImport} />
+                Import CSV<input type="file" accept=".csv" style={{display:"none"}} onChange={handleImport} />
               </label>
               <Button onClick={exportCSV}>Export CSV</Button>
               <Button onClick={clearTodaySales}>Clear Today Sales</Button>
+              <Button onClick={syncCatalog}>Sync Catalog → Sheet</Button>
               <ChangePasswordButton />
             </>
           }>
             <div className="grid cols-3">
               <div style={{gridColumn:"span 2"}}>
                 <div style={{fontSize:13, marginBottom:6}}>Search / Filter</div>
-                <input className="input" placeholder="Filter by name, barcode, category"
-                       value={filter} onChange={e=>setFilter(e.target.value)} />
+                <input className="input" placeholder="Filter by name, barcode, category" value={filter} onChange={e=>setFilter(e.target.value)} />
               </div>
               <div style={{display:"flex", alignItems:"flex-end", justifyContent:"flex-end"}}>
                 <div style={{textAlign:"right", fontSize:14}}>
@@ -386,63 +378,32 @@
                 <tbody>
                   {products.map(p => (
                     <tr key={p.id}>
-                      <td>
-                        {editingId === p.id ? (
-                          <input className="input" value={p.name} onChange={e=>updateField(p.id,"name",e.target.value)} />
-                        ) : (
-                          <div style={{fontWeight:600}}>{p.name}</div>
-                        )}
-                      </td>
-                      <td>
-                        {editingId === p.id ? (
-                          <input className="input" value={p.barcode} onChange={e=>updateField(p.id,"barcode",e.target.value)} />
-                        ) : (
-                          <code className="code">{p.barcode || "—"}</code>
-                        )}
-                      </td>
-                      <td>
-                        {editingId === p.id ? (
-                          <input className="input" value={p.category||""} onChange={e=>updateField(p.id,"category",e.target.value)} />
-                        ) : (p.category || "—")}
-                      </td>
-                      <td className="right">
-                        {editingId === p.id ? (
-                          <input className="input" type="number" step="0.01" value={p.priceSold}
-                                 onChange={e=>updateField(p.id,"priceSold", parseFloat(e.target.value)||0)} />
-                        ) : currency(p.priceSold)}
-                      </td>
-                      <td className="right">
-                        {editingId === p.id ? (
-                          <input className="input" type="number" step="0.01" value={p.vendorCost}
-                                 onChange={e=>updateField(p.id,"vendorCost", parseFloat(e.target.value)||0)} />
-                        ) : currency(p.vendorCost)}
-                      </td>
-                      <td className="right">
-                        {editingId === p.id ? (
-                          <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
-                            <button className="btn" onClick={()=>adjustStarting(p.id,-1)}>-1</button>
-                            <input className="input" type="number" value={p.startingInventory}
-                                   onChange={e=>updateField(p.id,"startingInventory", parseInt(e.target.value)||0)} />
-                            <button className="btn" onClick={()=>adjustStarting(p.id,1)}>+1</button>
-                          </div>
-                        ) : p.startingInventory}
-                      </td>
+                      <td>{editingId === p.id ? <input className="input" value={p.name} onChange={e=>updateField(p.id,"name",e.target.value)} /> : <div style={{fontWeight:600}}>{p.name}</div>}</td>
+                      <td>{editingId === p.id ? <input className="input" value={p.barcode} onChange={e=>updateField(p.id,"barcode",e.target.value)} /> : <code className="code">{p.barcode || "—"}</code>}</td>
+                      <td>{editingId === p.id ? <input className="input" value={p.category||""} onChange={e=>updateField(p.id,"category",e.target.value)} /> : (p.category || "—")}</td>
+                      <td className="right">{editingId === p.id ? <input className="input" type="number" step="0.01" value={p.priceSold} onChange={e=>updateField(p.id,"priceSold", parseFloat(e.target.value)||0)} /> : currency(p.priceSold)}</td>
+                      <td className="right">{editingId === p.id ? <input className="input" type="number" step="0.01" value={p.vendorCost} onChange={e=>updateField(p.id,"vendorCost", parseFloat(e.target.value)||0)} /> : currency(p.vendorCost)}</td>
+                      <td className="right">{editingId === p.id ? (
+                        <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
+                          <button className="btn" onClick={()=>adjustStarting(p.id,-1)}>-1</button>
+                          <input className="input" type="number" value={p.startingInventory} onChange={e=>updateField(p.id,"startingInventory", parseInt(e.target.value)||0)} />
+                          <button className="btn" onClick={()=>adjustStarting(p.id,1)}>+1</button>
+                        </div>
+                      ) : p.startingInventory}</td>
                       <td className="right">{p.soldToday}</td>
                       <td className="right">{p.endingInv}</td>
                       <td className="right">{currency(p.revenueToday)}</td>
                       <td className="right">{currency(p.endingInvCost)}</td>
-                      <td className="right">
-                        {editingId === p.id ? (
-                          <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
-                            <Button onClick={()=>setEditingId(null)}>Save</Button>
-                            <Button onClick={()=>removeProduct(p.id)}>Delete</Button>
-                          </div>
-                        ) : (
-                          <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
-                            <Button onClick={()=>setEditingId(p.id)}>Edit</Button>
-                          </div>
-                        )}
-                      </td>
+                      <td className="right">{editingId === p.id ? (
+                        <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
+                          <Button onClick={()=>setEditingId(null)}>Save</Button>
+                          <Button onClick={()=>removeProduct(p.id)}>Delete</Button>
+                        </div>
+                      ) : (
+                        <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
+                          <Button onClick={()=>setEditingId(p.id)}>Edit</Button>
+                        </div>
+                      )}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -454,7 +415,8 @@
             <DayClose products={products} />
           </Card>
 
-          <div style={{display:"flex", justifyContent:"flex-end"}}>
+          <div style={{display:"flex", justifyContent:"space-between"}}>
+            <SetupBox />
             <Button onClick={()=>{ setAdminUnlocked(false); setTab('front'); }}>
               Lock Admin & Return to Front Desk
             </Button>
@@ -476,7 +438,6 @@
       );
     }
 
-    /** FRONT DESK TABLE (no cost columns) */
     function InventoryTableFront({ products }){
       return (
         <div className="card">
@@ -496,12 +457,7 @@
               <tbody>
                 {products.map(p => (
                   <tr key={p.id}>
-                    <td>
-                      <div style={{display:"flex", alignItems:"center", gap:8}}>
-                        <div style={{fontWeight:600}}>{p.name}</div>
-                        <Pill>{p.barcode || "no barcode"}</Pill>
-                      </div>
-                    </td>
+                    <td><div style={{display:"flex", alignItems:"center", gap:8}}><div style={{fontWeight:600}}>{p.name}</div><Pill>{p.barcode || "no barcode"}</Pill></div></td>
                     <td className="right">{currency(p.priceSold)}</td>
                     <td className="right">{p.startingInventory}</td>
                     <td className="right">{p.soldToday}</td>
@@ -516,10 +472,28 @@
       );
     }
 
+    /** Little setup box (top-right) */
+    function SetupBox(){
+      const [open, setOpen] = useState(false);
+      const url = getGAS();
+      const hotel = getHotelName();
+      return (
+        <>
+          <div className="small">Hotel: <b>{hotel}</b> • GAS: {url ? "Saved" : "Not set"}</div>
+          <Button onClick={()=>setOpen(true)}>Setup</Button>
+          {open && <SetupModal onClose={()=>setOpen(false)} />}
+        </>
+      );
+    }
+
     /** App */
     function App(){
-      const [tab, setTab] = useState("front"); // 'front' | 'admin'
-      const [inventory, setInventory] = useState(loadInventory());
+      const [tab, setTab] = useState("front");
+      const [inventory, setInventory] = useState(loadInventory().length ? loadInventory() : [
+        { id: crypto.randomUUID(), barcode:"0123456789012", name:"Bottled Water 16oz", priceSold:1.99, vendorCost:0.45, startingInventory:50, category:"Drinks" },
+        { id: crypto.randomUUID(), barcode:"1234567890123", name:"Chips - Classic",    priceSold:2.49, vendorCost:0.65, startingInventory:40, category:"Snacks" },
+        { id: crypto.randomUUID(), barcode:"2345678901234", name:"Chocolate Bar",      priceSold:2.99, vendorCost:0.85, startingInventory:35, category:"Snacks" }
+      ]);
       const [sales, setSales] = useState(loadSales());
       const [filter, setFilter] = useState("");
       const [adminUnlocked, setAdminUnlocked] = useState(false);
@@ -528,25 +502,18 @@
       useEffect(()=>saveInventory(inventory),[inventory]);
       useEffect(()=>saveSales(sales),[sales]);
 
-      // flush queued events if any (offline support)
       useEffect(() => { flushQueue(); }, []);
 
-      // Daily reset of local "today" counters when date changes
       useEffect(() => {
         const today = todayKey();
         const last = localStorage.getItem(LS_LAST_DAY);
-        if (last && last !== today) {
-          setSales([]); // clear local today's list; Google Sheet has full history
-        }
+        if (last && last !== today) { setSales([]); }
         localStorage.setItem(LS_LAST_DAY, today);
       }, []);
 
       const todaySalesMap = useMemo(()=>{
         const map = new Map();
-        for(const s of sales){
-          if(!isToday(s.ts)) continue;
-          map.set(s.barcode, (map.get(s.barcode)||0) + (s.qty||0));
-        }
+        for(const s of sales){ if(!isToday(s.ts)) continue; map.set(s.barcode, (map.get(s.barcode)||0) + (s.qty||0)); }
         return map;
       },[sales]);
 
@@ -556,7 +523,7 @@
             const soldToday = todaySalesMap.get(p.barcode) || 0;
             const endingInv = Math.max(0, (p.startingInventory||0) - soldToday);
             const revenueToday = (p.priceSold||0) * soldToday;
-            const endingInvCost = (p.vendorCost||0) * endingInv; // Admin uses this
+            const endingInvCost = (p.vendorCost||0) * endingInv;
             return {...p, soldToday, endingInv, revenueToday, endingInvCost};
           })
           .filter(p => {
@@ -575,37 +542,28 @@
       },[products]);
 
       async function recordSale(barcode, qty=1, prod=null){
-        if(!barcode) return;
-        const found = prod || inventory.find(p=>p.barcode===barcode);
-        if(!found) return;
+        const inv = inventory.find(p=>p.barcode===barcode) || prod; if(!inv) return;
         const ts = new Date().toISOString();
-        const evt = { ts, hotel: HOTEL_NAME, barcode, name: found.name, priceSold: found.priceSold, qty, revenue: (found.priceSold||0)*qty };
-
-        // Local UI update
+        const evt = { type:"sale", payload:{
+          ts, hotel: getHotelName(), barcode, name: inv.name, priceSold: inv.priceSold, qty, revenue:(inv.priceSold||0)*qty
+        }};
+        // local UI
         setSales(prev => [...prev, { barcode, qty, ts }]);
-
-        // Queue + try send
+        // queue + try send
         const q = loadQueue(); q.push(evt); saveQueue(q);
-        const ok = await sendEventToGAS(evt);
-        if (ok) flushQueue();
+        const ok = await sendToGAS(evt); if (ok) flushQueue();
       }
       function undoLastSale(){
         const idx = [...sales].map((s,i)=>({s,i})).filter(({s})=>isToday(s.ts)).map(({i})=>i).pop();
-        if(idx===undefined) return;
-        const copy = [...sales]; copy.splice(idx,1); setSales(copy);
-        // (For simplicity we don't delete from the Sheet)
+        if(idx===undefined) return; const copy = [...sales]; copy.splice(idx,1); setSales(copy);
       }
-      function addProduct(){
-        setInventory(prev => [...prev, { id:crypto.randomUUID(), barcode:"", name:"New Product", priceSold:0, vendorCost:0, startingInventory:0, category:"" }]);
-      }
+      function addProduct(){ setInventory(prev => [...prev, { id:crypto.randomUUID(), barcode:"", name:"New Product", priceSold:0, vendorCost:0, startingInventory:0, category:"" }]); }
       function importCSV(text){
         const rows = text.split(/\r?\n/).filter(Boolean); if(!rows.length) return;
-        const headers = rows[0].split(",").map(h=>h.trim());
-        const idx = (k)=> headers.indexOf(k);
+        const headers = rows[0].split(",").map(h=>h.trim()); const idx = (k)=> headers.indexOf(k);
         const out = [];
         for(let i=1;i<rows.length;i++){
           const cols = rows[i].split(",");
-          if(!cols.length) continue;
           out.push({
             id: crypto.randomUUID(),
             barcode: cols[idx("barcode")]?.trim() || "",
@@ -622,16 +580,11 @@
         const headers = ["barcode","name","priceSold","vendorCost","startingInventory","category"];
         const body = inventory.map(p => [p.barcode,p.name,p.priceSold,p.vendorCost,p.startingInventory,p.category||""].map(x=>String(x).replaceAll(",","")).join(",")).join("\n");
         const csv = headers.join(",") + "\n" + body;
-        const blob = new Blob([csv], {type:"text/csv"});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = `inventory_${todayKey()}.csv`; a.click();
-        URL.revokeObjectURL(url);
+        const blob = new Blob([csv], {type:"text/csv"}); const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); a.href = url; a.download = `inventory_${todayKey()}.csv`; a.click(); URL.revokeObjectURL(url);
       }
-      function openAdmin(){
-        if(adminUnlocked){ setTab("admin"); }
-        else { setShowPassModal(true); }
-      }
+
+      function openAdmin(){ setShowPassModal(true); }
 
       return (
         <div className="container">
@@ -661,23 +614,19 @@
               setFilter={setFilter}
               addProduct={addProduct}
               exportCSV={exportCSV}
-              importCSV={importCSV}
+              importCSV={text=>importCSV(text)}
               sales={sales}
               setSales={setSales}
               totals={totals}
               setTab={setTab}
-              setAdminUnlocked={setAdminUnlocked}
+              setAdminUnlocked={()=>{}}
             />
           )}
 
           {showPassModal && (
             <PasswordModal
               onClose={()=>setShowPassModal(false)}
-              onSuccess={()=>{
-                setAdminUnlocked(true);
-                setShowPassModal(false);
-                setTab("admin");
-              }}
+              onSuccess={()=>{ setShowPassModal(false); setTab("admin"); }}
             />
           )}
         </div>
