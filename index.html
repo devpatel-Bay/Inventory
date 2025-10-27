@@ -31,6 +31,8 @@
     .tile .label { font-size:12px; color:var(--muted); }
     .tile .value { font-size:18px; font-weight:600; }
     .small { font-size:12px; color:var(--muted); }
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.3); display:grid; place-items:center; padding:16px; z-index:1000; }
+    .modal { background:#fff; border:1px solid var(--border); border-radius:16px; width:100%; max-width:480px; padding:16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
   </style>
 </head>
 <body>
@@ -139,7 +141,7 @@
               <input className="input" placeholder="https://script.google.com/macros/s/..." value={url} onChange={e=>setUrl(e.target.value)} />
             </div>
             <div className="small" style={{marginTop:8}}>Paste the Web App URL from your Sheet’s Apps Script deployment.</div>
-            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}">
+            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}>
               <Button onClick={saveAll}>Save URL</Button>
               <Button onClick={testPing}>Send test ping</Button>
               <Button className="primary" onClick={onClose}>Close</Button>
@@ -161,7 +163,7 @@
             <h3 style={{marginTop:0}}>Enter Admin Password</h3>
             <input className="input" type="password" placeholder="Password" value={pass} onChange={e=>setPass(e.target.value)} />
             {error && <div style={{color:"#dc2626", marginTop:6, fontSize:14}}>{error}</div>}
-            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}">
+            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}>
               <Button onClick={onClose}>Cancel</Button>
               <Button className="primary" onClick={submit}>Unlock</Button>
             </div>
@@ -191,7 +193,7 @@
               <input className="input" type="password" placeholder="Confirm new password" value={confirm} onChange={e=>setConfirm(e.target.value)} />
               {error && <div style={{color:"#dc2626"}}>{error}</div>}
             </div>
-            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}">
+            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}>
               <Button onClick={onClose}>Cancel</Button>
               <Button className="primary" onClick={save}>Save</Button>
             </div>
@@ -329,7 +331,10 @@
                   {products.map(p => (
                     <tr key={p.id}>
                       <td>{editingId === p.id ? <input className="input" value={p.name} onChange={e=>updateField(p.id,"name",e.target.value)} /> : <div style={{fontWeight:600}}>{p.name}</div>}</td>
-                      <td>{editingId === p.id ? <input className="input" value={p.barcode} onChange={e=>updateField(p.id,"barcode",e.target.value)} /> : <code style="background:#f3f4f6;padding:2px 4px;border-radius:4px;font-size:12px;">{p.barcode || "—"}</code>}</td>
+                      <td>{editingId === p.id
+                        ? <input className="input" value={p.barcode} onChange={e=>updateField(p.id,"barcode",e.target.value)} />
+                        : <code style={{background:'#f3f4f6', padding:'2px 4px', borderRadius:'4px', fontSize:'12px'}}>{p.barcode || "—"}</code>
+                      }</td>
                       <td>{editingId === p.id ? <input className="input" value={p.category||""} onChange={e=>updateField(p.id,"category",e.target.value)} /> : (p.category || "—")}</td>
                       <td className="right">{editingId === p.id ? <input className="input" type="number" step="0.01" value={p.priceSold} onChange={e=>updateField(p.id,"priceSold", parseFloat(e.target.value)||0)} /> : currency(p.priceSold)}</td>
                       <td className="right">{editingId === p.id ? <input className="input" type="number" step="0.01" value={p.vendorCost} onChange={e=>updateField(p.id,"vendorCost", parseFloat(e.target.value)||0)} /> : currency(p.vendorCost)}</td>
@@ -371,7 +376,7 @@
 
           <div style={{display:"flex", justifyContent:"space-between"}}>
             <SetupBox />
-            <Button onClick={()=>{ setTab('front'); }}>Lock Admin & Return to Front Desk</Button>
+            <!-- Admin access is opened from header button -->
           </div>
         </div>
       );
@@ -396,7 +401,12 @@
               <tbody>
                 {products.map(p => (
                   <tr key={p.id}>
-                    <td><div style={{display:"flex", alignItems:"center", gap:8}}><div style={{fontWeight:600}}>{p.name}</div><span class="pill">{p.barcode || "no barcode"}</span></div></td>
+                    <td>
+                      <div style={{display:"flex", alignItems:"center", gap:8}}>
+                        <div style={{fontWeight:600}}>{p.name}</div>
+                        <span className="pill">{p.barcode || "no barcode"}</span>
+                      </div>
+                    </td>
                     <td className="right">{currency(p.priceSold)}</td>
                     <td className="right">{p.startingInventory}</td>
                     <td className="right">{p.soldToday}</td>
@@ -424,7 +434,6 @@
       );
     }
 
-    /* ===== App (send-first, queue-on-fail, UUID) ===== */
     function App(){
       const [tab, setTab] = useState("front");
       const [inventory, setInventory] = useState(loadInventory().length ? loadInventory() : [
@@ -440,6 +449,7 @@
       useEffect(()=>saveSales(sales),[sales]);
       useEffect(()=>{ flushQueue(); }, []);
 
+      // new day -> clear local "today" sales
       useEffect(() => {
         const today = todayKey();
         const last = localStorage.getItem(LS_LAST_DAY);
@@ -472,6 +482,7 @@
         return { unitsSold, revenue };
       },[products]);
 
+      // send-first, queue-on-fail, UUID; input-only + 300ms de-dupe
       async function recordSale(barcode, qty=1, prod=null){
         const inv = inventory.find(p=>p.barcode===barcode) || prod; if(!inv) return;
 
@@ -482,7 +493,7 @@
         window.__lastScanSig = { code: sig, t: now };
 
         const ts = new Date().toISOString();
-        const id = crypto.randomUUID(); // UNIQUE ID FOR SERVER-SIDE DEDUPE
+        const id = crypto.randomUUID();
         const evt = { type:"sale", payload:{
           id, ts, hotel: getHotelName(), barcode, name: inv.name, priceSold: inv.priceSold, qty, revenue:(inv.priceSold||0)*qty
         }};
@@ -490,7 +501,7 @@
         // local UI
         setSales(prev => [...prev, { id, barcode, qty, ts }]);
 
-        // send first, queue only on failure
+        // send first, queue on failure
         const ok = await sendToGAS(evt);
         if (!ok) {
           const q = loadQueue(); q.push(evt); saveQueue(q);
@@ -504,6 +515,7 @@
         if(idx===undefined) return; const copy = [...sales]; copy.splice(idx,1); setSales(copy);
       }
       function addProduct(){ setInventory(prev => [...prev, { id:crypto.randomUUID(), barcode:"", name:"New Product", priceSold:0, vendorCost:0, startingInventory:0, category:"" }]); }
+
       function importCSV(text){
         const rows = text.split(/\r?\n/).filter(Boolean); if(!rows.length) return;
         const headers = rows[0].split(",").map(h=>h.trim()); const idx = (k)=> headers.indexOf(k);
@@ -530,13 +542,15 @@
         const a = document.createElement("a"); a.href = url; a.download = `inventory_${todayKey()}.csv`; a.click(); URL.revokeObjectURL(url);
       }
 
+      function openAdmin(){ setShowPassModal(true); }
+
       return (
         <div className="container">
           <header>
             <h1>Hotel Inventory & Sales Tracker</h1>
             <div className="actions">
               <Button className={tab==="front" ? "primary":""} onClick={()=>setTab("front")}>Front Desk (Scan)</Button>
-              <Button className={tab==="admin" ? "primary":""} onClick={()=>setTab("admin")}>Admin</Button>
+              <Button className={tab==="admin" ? "primary":""} onClick={openAdmin}>Admin</Button>
             </div>
           </header>
 
@@ -550,6 +564,18 @@
               totals={totals}
             />
           ) : (
+            <>
+              {/* gate admin behind password */}
+              {showPassModal
+                ? <PasswordModal
+                    onClose={()=>setShowPassModal(false)}
+                    onSuccess={()=>{ setShowPassModal(false); setTab("admin_unlocked"); }}
+                  />
+                : null}
+            </>
+          )}
+
+          {tab === "admin_unlocked" && (
             <AdminView
               products={products}
               inventory={inventory}
@@ -566,11 +592,6 @@
             />
           )}
 
-          {/* Admin password on open */}
-          {/* Triggered when switching to Admin */}
-          {tab==="admin" && null}
-
-          {/* Setup box */}
           <div style={{display:"flex", justifyContent:"space-between", marginTop:16}}>
             <SetupBox />
           </div>
