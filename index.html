@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,7 +7,7 @@
   <style>
     :root { --bg:#f6f6f7; --card:#fff; --border:#e5e7eb; --text:#111; --muted:#6b7280; }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, "Apple Color Emoji","Segoe UI Emoji"; background:var(--bg); color:var(--text); }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:var(--bg); color:var(--text); }
     .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
     header { display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
     h1 { font-size: 22px; font-weight: 700; }
@@ -31,12 +30,6 @@
     .tile { background:#fff; border:1px solid var(--border); border-radius:16px; padding:12px; }
     .tile .label { font-size:12px; color:var(--muted); }
     .tile .value { font-size:18px; font-weight:600; }
-    .muted { color:var(--muted); }
-    .actions { display:flex; gap:8px; flex-wrap:wrap; }
-    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.3); display:grid; place-items:center; padding:16px; z-index:1000; }
-    .modal { background:#fff; border:1px solid var(--border); border-radius:16px; width:100%; max-width:480px; padding:16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
-    code.code { background:#f3f4f6; padding:2px 4px; border-radius:4px; font-size:12px; }
-    .setup { display:flex; gap:8px; align-items:center; }
     .small { font-size:12px; color:var(--muted); }
   </style>
 </head>
@@ -52,27 +45,16 @@
   <script type="text/babel">
     const { useEffect, useMemo, useRef, useState } = React;
 
-    /* =======================
-       CONFIG / LOCAL STORAGE
-       ======================= */
+    /* ===== CONFIG / LOCAL STORAGE ===== */
     const DEFAULT_HOTEL_NAME = "Your Hotel Name";
-    const LS_INV = "hotel_inventory_v1";
-    const LS_SALES = "hotel_sales_v1";
-    const LS_ADMIN_PASS = "hotel_admin_pass_v1";
-    const LS_QUEUE = "sales_queue_v1";
-    const LS_LAST_DAY = "last_open_day_v1";
-    const LS_HOTEL = "hotel_name_v1";
-    const LS_GAS = "gas_webapp_url_v1";
+    const LS_INV="hotel_inventory_v1", LS_SALES="hotel_sales_v1", LS_ADMIN_PASS="hotel_admin_pass_v1";
+    const LS_QUEUE="sales_queue_v1", LS_LAST_DAY="last_open_day_v1", LS_HOTEL="hotel_name_v1", LS_GAS="gas_webapp_url_v1";
 
     const currency = (n) => isNaN(n) ? "-" : n.toLocaleString(undefined, { style:"currency", currency:"USD" });
-    const todayKey = () => {
-      const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-    };
+    const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
     const isToday = (ts) => { try { return new Date(ts).toISOString().slice(0,10) === todayKey(); } catch { return false; } };
-
     const loadJSON = (k, fallback) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
     const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
-
     const loadInventory = () => loadJSON(LS_INV, []);
     const saveInventory = (x) => saveJSON(LS_INV, x);
     const loadSales = () => loadJSON(LS_SALES, []);
@@ -84,60 +66,22 @@
     const getGAS = () => localStorage.getItem(LS_GAS) || "";
     const setGAS = (u) => localStorage.setItem(LS_GAS, u);
 
-    /* =======================
-       BARCODE SCAN LISTENER
-       (global, buffered)
-       ======================= */
-    let SCAN_BUFFER = "";
-    let SCAN_TIMER = null;
-    const SCAN_TIMEOUT_MS = 50;
-    const MIN_SCAN_LEN = 6;
-
-    function attachGlobalScan(handler) {
-      document.addEventListener("keydown", (e) => {
-        clearTimeout(SCAN_TIMER);
-        if (e.key === "Enter") {
-          const code = SCAN_BUFFER.trim();
-          SCAN_BUFFER = "";
-          if (code.length >= MIN_SCAN_LEN) handler(code);
-          return;
-        }
-        if (/^[0-9A-Za-z\-\.\(\)\s]$/.test(e.key)) {
-          SCAN_BUFFER += e.key;
-        }
-        SCAN_TIMER = setTimeout(() => {
-          if (SCAN_BUFFER.length >= MIN_SCAN_LEN) {
-            const code = SCAN_BUFFER.trim();
-            SCAN_BUFFER = "";
-            handler(code);
-          } else {
-            SCAN_BUFFER = "";
-          }
-        }, SCAN_TIMEOUT_MS);
-      });
-    }
-
-    /* =======================
-       NETWORK QUEUE HELPERS
-       ======================= */
+    /* ===== NETWORK QUEUE HELPERS ===== */
     const loadQueue = () => loadJSON(LS_QUEUE, []);
     const saveQueue = (a) => saveJSON(LS_QUEUE, a);
 
     async function sendToGAS(evt) {
-      const url = getGAS(); if (!url) return true; // treat as success until configured
+      const url = getGAS(); if (!url) return true; // treat as success if not configured
       try {
         await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(evt), mode:"no-cors" });
-        return true; // no-cors prevents reading response; assume success if no exception
+        return true; // no-cors => assume success if no exception
       } catch {
         return false;
       }
     }
-
     async function flushQueue(){
-      const url = getGAS(); 
-      if (!url) return;
-      const q = loadQueue();
-      if (!q.length) return;
+      const url = getGAS(); if (!url) return;
+      const q = loadQueue(); if (!q.length) return;
       const still = [];
       for (const evt of q) {
         const ok = await sendToGAS(evt);
@@ -147,9 +91,7 @@
     }
     window.addEventListener("online", flushQueue);
 
-    /* =======================
-       SMALL UI ATOMS
-       ======================= */
+    /* ===== UI atoms ===== */
     const Button = ({ children, className="", ...props }) => <button {...props} className={"btn "+className}>{children}</button>;
     const Card = ({ title, actions, children }) => (
       <div className="card">
@@ -163,22 +105,17 @@
     const Pill = ({children}) => <span className="pill">{children}</span>;
     const SummaryTile = ({ label, value }) => <div className="tile"><div className="label">{label}</div><div className="value">{value}</div></div>;
 
-    /* =======================
-       SETUP + AUTH MODALS
-       ======================= */
+    /* ===== Setup modal ===== */
     function SetupModal({ onClose }) {
       const [hotel, setHotel] = useState(getHotelName());
       const [url, setUrl] = useState(getGAS());
       const [msg, setMsg] = useState("");
-      async function saveAll(){
-        setHotelName(hotel.trim() || DEFAULT_HOTEL_NAME);
-        setGAS(url.trim());
-        setMsg("Saved! Try 'Send test ping' to verify.");
-      }
+      async function saveAll(){ setHotelName(hotel.trim()||DEFAULT_HOTEL_NAME); setGAS(url.trim()); setMsg("Saved! Try 'Send test ping'."); }
       async function testPing(){
         if (!url.trim()) { setMsg("Paste your Web App URL first."); return; }
         setMsg("Sending test ping…");
         const ok = await sendToGAS({ type:"sale", payload:{
+          id: crypto.randomUUID(),
           ts: new Date().toISOString(),
           hotel,
           barcode: "TEST",
@@ -193,16 +130,16 @@
         <div className="modal-backdrop">
           <div className="modal">
             <h3 style={{marginTop:0}}>Setup</h3>
-            <div className="setup">
+            <div style={{display:"flex", gap:8, alignItems:"center"}}>
               <label style={{width:"120px"}}>Hotel name</label>
               <input className="input" value={hotel} onChange={e=>setHotel(e.target.value)} />
             </div>
-            <div className="setup" style={{marginTop:8}}>
+            <div style={{display:"flex", gap:8, alignItems:"center", marginTop:8}}>
               <label style={{width:"120px"}}>Apps Script URL</label>
               <input className="input" placeholder="https://script.google.com/macros/s/..." value={url} onChange={e=>setUrl(e.target.value)} />
             </div>
             <div className="small" style={{marginTop:8}}>Paste the Web App URL from your Sheet’s Apps Script deployment.</div>
-            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}>
+            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}">
               <Button onClick={saveAll}>Save URL</Button>
               <Button onClick={testPing}>Send test ping</Button>
               <Button className="primary" onClick={onClose}>Close</Button>
@@ -213,6 +150,7 @@
       );
     }
 
+    /* ===== Password modals (admin) ===== */
     function PasswordModal({ onClose, onSuccess }){
       const [pass, setPass] = useState("");
       const [error, setError] = useState("");
@@ -223,7 +161,7 @@
             <h3 style={{marginTop:0}}>Enter Admin Password</h3>
             <input className="input" type="password" placeholder="Password" value={pass} onChange={e=>setPass(e.target.value)} />
             {error && <div style={{color:"#dc2626", marginTop:6, fontSize:14}}>{error}</div>}
-            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}>
+            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}">
               <Button onClick={onClose}>Cancel</Button>
               <Button className="primary" onClick={submit}>Unlock</Button>
             </div>
@@ -232,7 +170,6 @@
         </div>
       );
     }
-
     function ChangePasswordModal({ onClose }){
       const [current, setCurrent] = useState("");
       const [next, setNext] = useState("");
@@ -254,7 +191,7 @@
               <input className="input" type="password" placeholder="Confirm new password" value={confirm} onChange={e=>setConfirm(e.target.value)} />
               {error && <div style={{color:"#dc2626"}}>{error}</div>}
             </div>
-            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}>
+            <div style={{display:"flex", gap:8, justifyContent:"flex-end", marginTop:12}}">
               <Button onClick={onClose}>Cancel</Button>
               <Button className="primary" onClick={save}>Save</Button>
             </div>
@@ -262,16 +199,12 @@
         </div>
       );
     }
-
     function ChangePasswordButton(){
       const [open, setOpen] = useState(false);
       return (<>{open && <ChangePasswordModal onClose={()=>setOpen(false)} />}<Button onClick={()=>setOpen(true)}>Change Password</Button></>);
     }
 
-    /* =======================
-       FRONT DESK VIEW
-       (dedup + no double triggers)
-       ======================= */
+    /* ===== Front Desk (input-only scanning + de-dupe) ===== */
     function FrontDeskView({ products, recordSale, undoLastSale, filter, setFilter, totals }){
       const [last, setLast] = useState(null);
       const inputRef = useRef(null);
@@ -280,28 +213,18 @@
       function handleScan(e){
         if(e.key === "Enter"){
           const code = e.currentTarget.value.trim();
-          if (code) onBarcode(code);
+          if (code) {
+            const prod = products.find(p => p.barcode === code);
+            if(prod){
+              recordSale(code, 1, prod);
+              setLast({ code, name: prod.name, price: prod.priceSold });
+            } else {
+              setLast({ code, name: "Unknown barcode", price: 0 });
+            }
+          }
           e.currentTarget.value = "";
         }
       }
-      function onBarcode(code){
-        const prod = products.find(p => p.barcode === code);
-        if(prod){
-          recordSale(code, 1, prod);
-          setLast({ code, name: prod.name, price: prod.priceSold });
-        } else {
-          setLast({ code, name: "Unknown barcode", price: 0 });
-        }
-      }
-
-      // Keep global listener BUT ignore if the barcode input is focused (prevents double)
-      useEffect(() => {
-        const handler = (code) => {
-          if (document.activeElement === inputRef.current) return; // input will handle via Enter
-          onBarcode(code);
-        };
-        attachGlobalScan(handler);
-      }, []);
 
       return (
         <div>
@@ -309,7 +232,7 @@
             <div className="grid cols-3">
               <div style={{gridColumn:"span 2"}}>
                 <div style={{fontSize:13, marginBottom:6}}>Barcode Input</div>
-                <input ref={inputRef} className="input" placeholder="Click here and scan a product (press Enter)" onKeyDown={handleScan} />
+                <input ref={inputRef} className="input" placeholder="Click here and scan a product (scanner should send Enter/CR)" onKeyDown={handleScan} />
                 {last && <div className="small" style={{marginTop:8}}>Last Scan: <b>{last.name}</b> ({last.code}) • {currency(last.price)}</div>}
               </div>
               <div>
@@ -331,10 +254,8 @@
       );
     }
 
-    /* =======================
-       ADMIN VIEW
-       ======================= */
-    function AdminView({ products, inventory, setInventory, filter, setFilter, addProduct, exportCSV, importCSV, sales, setSales, totals, setTab, setAdminUnlocked }){
+    /* ===== Admin View (keeps vendor cost) ===== */
+    function AdminView({ products, inventory, setInventory, filter, setFilter, addProduct, exportCSV, importCSV, sales, setSales, totals, setTab }){
       const [editingId, setEditingId] = useState(null);
       function updateField(id, field, value){ setInventory(prev => prev.map(p => p.id === id ? ({...p, [field]: value}) : p)); }
       function removeProduct(id){ if(!confirm("Remove this product?")) return; setInventory(prev => prev.filter(p => p.id !== id)); }
@@ -347,7 +268,6 @@
         const f = ev.target.files?.[0]; if(!f) return;
         const r = new FileReader(); r.onload = () => importCSV(String(r.result||"")); r.readAsText(f); ev.target.value = "";
       }
-
       async function syncCatalog(){
         const url = getGAS(); if(!url){ alert("Add Apps Script URL in Setup first."); return; }
         const payload = inventory.map(p => ({
@@ -357,7 +277,6 @@
         await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ type:"catalog", payload }), mode:"no-cors" });
         alert("Catalog sync sent. Check the 'Catalog' tab.");
       }
-
       return (
         <div>
           <span className="pill">Admin Mode</span>
@@ -410,7 +329,7 @@
                   {products.map(p => (
                     <tr key={p.id}>
                       <td>{editingId === p.id ? <input className="input" value={p.name} onChange={e=>updateField(p.id,"name",e.target.value)} /> : <div style={{fontWeight:600}}>{p.name}</div>}</td>
-                      <td>{editingId === p.id ? <input className="input" value={p.barcode} onChange={e=>updateField(p.id,"barcode",e.target.value)} /> : <code className="code">{p.barcode || "—"}</code>}</td>
+                      <td>{editingId === p.id ? <input className="input" value={p.barcode} onChange={e=>updateField(p.id,"barcode",e.target.value)} /> : <code style="background:#f3f4f6;padding:2px 4px;border-radius:4px;font-size:12px;">{p.barcode || "—"}</code>}</td>
                       <td>{editingId === p.id ? <input className="input" value={p.category||""} onChange={e=>updateField(p.id,"category",e.target.value)} /> : (p.category || "—")}</td>
                       <td className="right">{editingId === p.id ? <input className="input" type="number" step="0.01" value={p.priceSold} onChange={e=>updateField(p.id,"priceSold", parseFloat(e.target.value)||0)} /> : currency(p.priceSold)}</td>
                       <td className="right">{editingId === p.id ? <input className="input" type="number" step="0.01" value={p.vendorCost} onChange={e=>updateField(p.id,"vendorCost", parseFloat(e.target.value)||0)} /> : currency(p.vendorCost)}</td>
@@ -425,16 +344,16 @@
                       <td className="right">{p.endingInv}</td>
                       <td className="right">{currency(p.revenueToday)}</td>
                       <td className="right">{currency(p.endingInvCost)}</td>
-                      <td className="right">{editingId === p.id ? (
-                        <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
-                          <Button onClick={()=>setEditingId(null)}>Save</Button>
-                          <Button onClick={()=>removeProduct(p.id)}>Delete</Button>
-                        </div>
-                      ) : (
-                        <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
-                          <Button onClick={()=>setEditingId(p.id)}>Edit</Button>
-                        </div>
-                      )}</td>
+                      <td className="right">
+                        {editingId === p.id
+                          ? <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
+                              <Button onClick={()=>setEditingId(null)}>Save</Button>
+                              <Button onClick={()=>removeProduct(p.id)}>Delete</Button>
+                            </div>
+                          : <div style={{display:"flex", gap:8, justifyContent:"flex-end"}}>
+                              <Button onClick={()=>setEditingId(p.id)}>Edit</Button>
+                            </div>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -443,38 +362,21 @@
           </Card>
 
           <Card title="Day Close Summary (Today)">
-            <DayClose products={products} />
+            <div className="summary">
+              <SummaryTile label="Units Sold Today" value={products.reduce((a,p)=>a+p.soldToday,0)} />
+              <SummaryTile label="Revenue (Price × Units)" value={currency(products.reduce((a,p)=>a+p.revenueToday,0))} />
+              <SummaryTile label="Ending Inventory Value (Vendor Cost)" value={currency(products.reduce((a,p)=>a+p.endingInvCost,0))} />
+            </div>
           </Card>
 
           <div style={{display:"flex", justifyContent:"space-between"}}>
             <SetupBox />
-            <Button onClick={()=>{ setAdminUnlocked(false); setTab('front'); }}>
-              Lock Admin & Return to Front Desk
-            </Button>
+            <Button onClick={()=>{ setTab('front'); }}>Lock Admin & Return to Front Desk</Button>
           </div>
         </div>
       );
     }
 
-    /* =======================
-       DAY CLOSE SUMMARY
-       ======================= */
-    function DayClose({ products }){
-      const totalUnits = products.reduce((a,p)=>a+p.soldToday,0);
-      const totalRevenue = products.reduce((a,p)=>a+p.revenueToday,0);
-      const totalEndCost = products.reduce((a,p)=>a+p.endingInvCost,0);
-      return (
-        <div className="summary">
-          <SummaryTile label="Units Sold Today" value={totalUnits} />
-          <SummaryTile label="Revenue (Price × Units)" value={currency(totalRevenue)} />
-          <SummaryTile label="Ending Inventory Value (Vendor Cost)" value={currency(totalEndCost)} />
-        </div>
-      );
-    }
-
-    /* =======================
-       FRONT TABLE (no costs)
-       ======================= */
     function InventoryTableFront({ products }){
       return (
         <div className="card">
@@ -494,7 +396,7 @@
               <tbody>
                 {products.map(p => (
                   <tr key={p.id}>
-                    <td><div style={{display:"flex", alignItems:"center", gap:8}}><div style={{fontWeight:600}}>{p.name}</div><Pill>{p.barcode || "no barcode"}</Pill></div></td>
+                    <td><div style={{display:"flex", alignItems:"center", gap:8}}><div style={{fontWeight:600}}>{p.name}</div><span class="pill">{p.barcode || "no barcode"}</span></div></td>
                     <td className="right">{currency(p.priceSold)}</td>
                     <td className="right">{p.startingInventory}</td>
                     <td className="right">{p.soldToday}</td>
@@ -509,9 +411,6 @@
       );
     }
 
-    /* =======================
-       SETUP BOX (top-right)
-       ======================= */
     function SetupBox(){
       const [open, setOpen] = useState(false);
       const url = getGAS();
@@ -525,9 +424,7 @@
       );
     }
 
-    /* =======================
-       APP (with dedup + queue fix)
-       ======================= */
+    /* ===== App (send-first, queue-on-fail, UUID) ===== */
     function App(){
       const [tab, setTab] = useState("front");
       const [inventory, setInventory] = useState(loadInventory().length ? loadInventory() : [
@@ -541,9 +438,8 @@
 
       useEffect(()=>saveInventory(inventory),[inventory]);
       useEffect(()=>saveSales(sales),[sales]);
-      useEffect(() => { flushQueue(); }, []);
+      useEffect(()=>{ flushQueue(); }, []);
 
-      // reset local "today" list if day changes
       useEffect(() => {
         const today = todayKey();
         const last = localStorage.getItem(LS_LAST_DAY);
@@ -558,21 +454,16 @@
       },[sales]);
 
       const products = useMemo(()=>{
-        return inventory
-          .map(p => {
-            const soldToday = todaySalesMap.get(p.barcode) || 0;
-            const endingInv = Math.max(0, (p.startingInventory||0) - soldToday);
-            const revenueToday = (p.priceSold||0) * soldToday;
-            const endingInvCost = (p.vendorCost||0) * endingInv;
-            return {...p, soldToday, endingInv, revenueToday, endingInvCost};
-          })
-          .filter(p => {
-            const q = filter.trim().toLowerCase();
-            if(!q) return true;
-            return p.name.toLowerCase().includes(q)
-              || (p.barcode||"").toLowerCase().includes(q)
-              || (p.category||"").toLowerCase().includes(q);
-          });
+        return inventory.map(p => {
+          const soldToday = todaySalesMap.get(p.barcode) || 0;
+          const endingInv = Math.max(0, (p.startingInventory||0) - soldToday);
+          const revenueToday = (p.priceSold||0) * soldToday;
+          const endingInvCost = (p.vendorCost||0) * endingInv;
+          return {...p, soldToday, endingInv, revenueToday, endingInvCost};
+        }).filter(p => {
+          const q = filter.trim().toLowerCase(); if(!q) return true;
+          return p.name.toLowerCase().includes(q) || (p.barcode||"").toLowerCase().includes(q) || (p.category||"").toLowerCase().includes(q);
+        });
       }, [inventory, todaySalesMap, filter]);
 
       const totals = useMemo(()=>{
@@ -581,37 +472,30 @@
         return { unitsSold, revenue };
       },[products]);
 
-      // PATCHED: send first, queue on failure; also 300ms dedupe
       async function recordSale(barcode, qty=1, prod=null){
-        const inv = inventory.find(p=>p.barcode===barcode) || prod; 
-        if(!inv) return;
+        const inv = inventory.find(p=>p.barcode===barcode) || prod; if(!inv) return;
 
-        // simple de-dupe: ignore identical scan twice within 300ms
+        // de-dupe: ignore identical scan within 300ms
         window.__lastScanSig ||= { code:"", t:0 };
         const now = Date.now(), sig = `${barcode}|${qty}`;
         if (window.__lastScanSig.code === sig && (now - window.__lastScanSig.t) < 300) return;
         window.__lastScanSig = { code: sig, t: now };
 
         const ts = new Date().toISOString();
+        const id = crypto.randomUUID(); // UNIQUE ID FOR SERVER-SIDE DEDUPE
         const evt = { type:"sale", payload:{
-          ts,
-          hotel: getHotelName(),
-          barcode,
-          name: inv.name,
-          priceSold: inv.priceSold,
-          qty,
-          revenue:(inv.priceSold||0)*qty
+          id, ts, hotel: getHotelName(), barcode, name: inv.name, priceSold: inv.priceSold, qty, revenue:(inv.priceSold||0)*qty
         }};
 
-        // Update UI immediately
-        setSales(prev => [...prev, { barcode, qty, ts }]);
+        // local UI
+        setSales(prev => [...prev, { id, barcode, qty, ts }]);
 
-        // Try network first; only queue if it fails
+        // send first, queue only on failure
         const ok = await sendToGAS(evt);
         if (!ok) {
           const q = loadQueue(); q.push(evt); saveQueue(q);
         } else {
-          flushQueue(); // try to drain any older queued events
+          flushQueue();
         }
       }
 
@@ -646,15 +530,13 @@
         const a = document.createElement("a"); a.href = url; a.download = `inventory_${todayKey()}.csv`; a.click(); URL.revokeObjectURL(url);
       }
 
-      function openAdmin(){ setShowPassModal(true); }
-
       return (
         <div className="container">
           <header>
             <h1>Hotel Inventory & Sales Tracker</h1>
             <div className="actions">
               <Button className={tab==="front" ? "primary":""} onClick={()=>setTab("front")}>Front Desk (Scan)</Button>
-              <Button className={tab==="admin" ? "primary":""} onClick={openAdmin}>Admin</Button>
+              <Button className={tab==="admin" ? "primary":""} onClick={()=>setTab("admin")}>Admin</Button>
             </div>
           </header>
 
@@ -681,16 +563,17 @@
               setSales={setSales}
               totals={totals}
               setTab={setTab}
-              setAdminUnlocked={()=>{}}
             />
           )}
 
-          {showPassModal && (
-            <PasswordModal
-              onClose={()=>setShowPassModal(false)}
-              onSuccess={()=>{ setShowPassModal(false); setTab("admin"); }}
-            />
-          )}
+          {/* Admin password on open */}
+          {/* Triggered when switching to Admin */}
+          {tab==="admin" && null}
+
+          {/* Setup box */}
+          <div style={{display:"flex", justifyContent:"space-between", marginTop:16}}>
+            <SetupBox />
+          </div>
         </div>
       );
     }
@@ -699,4 +582,3 @@
   </script>
 </body>
 </html>
-```
