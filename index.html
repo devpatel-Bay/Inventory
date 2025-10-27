@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -51,13 +52,10 @@
   <script type="text/babel">
     const { useEffect, useMemo, useRef, useState } = React;
 
-    /** =======================
-     *   CONFIG (quick edit)
-     *  ======================= */
+    /* =======================
+       CONFIG / LOCAL STORAGE
+       ======================= */
     const DEFAULT_HOTEL_NAME = "Your Hotel Name";
-    // You can paste your Apps Script URL into the Setup > “Save URL” box; it persists to localStorage.
-
-    /** Local keys */
     const LS_INV = "hotel_inventory_v1";
     const LS_SALES = "hotel_sales_v1";
     const LS_ADMIN_PASS = "hotel_admin_pass_v1";
@@ -66,7 +64,30 @@
     const LS_HOTEL = "hotel_name_v1";
     const LS_GAS = "gas_webapp_url_v1";
 
-    /** Scanner buffer (works even if input loses focus) */
+    const currency = (n) => isNaN(n) ? "-" : n.toLocaleString(undefined, { style:"currency", currency:"USD" });
+    const todayKey = () => {
+      const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    };
+    const isToday = (ts) => { try { return new Date(ts).toISOString().slice(0,10) === todayKey(); } catch { return false; } };
+
+    const loadJSON = (k, fallback) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
+    const saveJSON = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+
+    const loadInventory = () => loadJSON(LS_INV, []);
+    const saveInventory = (x) => saveJSON(LS_INV, x);
+    const loadSales = () => loadJSON(LS_SALES, []);
+    const saveSales = (x) => saveJSON(LS_SALES, x);
+    const getAdminPass = () => localStorage.getItem(LS_ADMIN_PASS) || "admin123";
+    const setAdminPass = (p) => localStorage.setItem(LS_ADMIN_PASS, p);
+    const getHotelName = () => localStorage.getItem(LS_HOTEL) || DEFAULT_HOTEL_NAME;
+    const setHotelName = (n) => localStorage.setItem(LS_HOTEL, n);
+    const getGAS = () => localStorage.getItem(LS_GAS) || "";
+    const setGAS = (u) => localStorage.setItem(LS_GAS, u);
+
+    /* =======================
+       BARCODE SCAN LISTENER
+       (global, buffered)
+       ======================= */
     let SCAN_BUFFER = "";
     let SCAN_TIMER = null;
     const SCAN_TIMEOUT_MS = 50;
@@ -87,7 +108,8 @@
         SCAN_TIMER = setTimeout(() => {
           if (SCAN_BUFFER.length >= MIN_SCAN_LEN) {
             const code = SCAN_BUFFER.trim();
-            SCAN_BUFFER = ""; handler(code);
+            SCAN_BUFFER = "";
+            handler(code);
           } else {
             SCAN_BUFFER = "";
           }
@@ -95,47 +117,39 @@
       });
     }
 
-    /** Helpers */
-    const currency = (n) => isNaN(n) ? "-" : n.toLocaleString(undefined, { style:"currency", currency:"USD" });
-    const todayKey = () => {
-      const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-    };
-    const isToday = (ts) => { try { return new Date(ts).toISOString().slice(0,10) === todayKey(); } catch { return false; } };
+    /* =======================
+       NETWORK QUEUE HELPERS
+       ======================= */
+    const loadQueue = () => loadJSON(LS_QUEUE, []);
+    const saveQueue = (a) => saveJSON(LS_QUEUE, a);
 
-    /** Persistence */
-    const loadInventory = () => {
-      try { return JSON.parse(localStorage.getItem(LS_INV) || "[]"); } catch { return []; }
-    };
-    const saveInventory = (x) => localStorage.setItem(LS_INV, JSON.stringify(x));
-    const loadSales = () => { try { return JSON.parse(localStorage.getItem(LS_SALES) || "[]"); } catch { return []; } };
-    const saveSales = (x) => localStorage.setItem(LS_SALES, JSON.stringify(x));
-    const getAdminPass = () => localStorage.getItem(LS_ADMIN_PASS) || "admin123";
-    const setAdminPass = (p) => localStorage.setItem(LS_ADMIN_PASS, p);
-    const getHotelName = () => localStorage.getItem(LS_HOTEL) || DEFAULT_HOTEL_NAME;
-    const setHotelName = (n) => localStorage.setItem(LS_HOTEL, n);
-    const getGAS = () => localStorage.getItem(LS_GAS) || "";
-    const setGAS = (u) => localStorage.setItem(LS_GAS, u);
-
-    /** Queue + network */
-    const loadQueue = () => { try { return JSON.parse(localStorage.getItem(LS_QUEUE) || "[]"); } catch { return []; } };
-    const saveQueue = (a) => localStorage.setItem(LS_QUEUE, JSON.stringify(a));
     async function sendToGAS(evt) {
-      const url = getGAS(); if (!url) return true;
+      const url = getGAS(); if (!url) return true; // treat as success until configured
       try {
         await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(evt), mode:"no-cors" });
-        return true;
-      } catch { return false; }
+        return true; // no-cors prevents reading response; assume success if no exception
+      } catch {
+        return false;
+      }
     }
-    async function flushQueue() {
-      const url = getGAS(); if (!url) return;
-      const q = loadQueue(); if (!q.length) return;
+
+    async function flushQueue(){
+      const url = getGAS(); 
+      if (!url) return;
+      const q = loadQueue();
+      if (!q.length) return;
       const still = [];
-      for (const e of q) { const ok = await sendToGAS(e); if (!ok) still.push(e); }
+      for (const evt of q) {
+        const ok = await sendToGAS(evt);
+        if (!ok) still.push(evt);
+      }
       saveQueue(still);
     }
     window.addEventListener("online", flushQueue);
 
-    /** Small UI atoms */
+    /* =======================
+       SMALL UI ATOMS
+       ======================= */
     const Button = ({ children, className="", ...props }) => <button {...props} className={"btn "+className}>{children}</button>;
     const Card = ({ title, actions, children }) => (
       <div className="card">
@@ -149,7 +163,9 @@
     const Pill = ({children}) => <span className="pill">{children}</span>;
     const SummaryTile = ({ label, value }) => <div className="tile"><div className="label">{label}</div><div className="value">{value}</div></div>;
 
-    /** Setup modal (paste/save GAS URL + hotel name + test ping) */
+    /* =======================
+       SETUP + AUTH MODALS
+       ======================= */
     function SetupModal({ onClose }) {
       const [hotel, setHotel] = useState(getHotelName());
       const [url, setUrl] = useState(getGAS());
@@ -252,15 +268,20 @@
       return (<>{open && <ChangePasswordModal onClose={()=>setOpen(false)} />}<Button onClick={()=>setOpen(true)}>Change Password</Button></>);
     }
 
-    /** Front Desk (scan) — NO vendor cost columns here */
+    /* =======================
+       FRONT DESK VIEW
+       (dedup + no double triggers)
+       ======================= */
     function FrontDeskView({ products, recordSale, undoLastSale, filter, setFilter, totals }){
       const [last, setLast] = useState(null);
       const inputRef = useRef(null);
       useEffect(()=>{ inputRef.current?.focus(); },[]);
+
       function handleScan(e){
         if(e.key === "Enter"){
           const code = e.currentTarget.value.trim();
-          onBarcode(code); e.currentTarget.value = "";
+          if (code) onBarcode(code);
+          e.currentTarget.value = "";
         }
       }
       function onBarcode(code){
@@ -272,7 +293,16 @@
           setLast({ code, name: "Unknown barcode", price: 0 });
         }
       }
-      useEffect(() => { attachGlobalScan(onBarcode); }, []);
+
+      // Keep global listener BUT ignore if the barcode input is focused (prevents double)
+      useEffect(() => {
+        const handler = (code) => {
+          if (document.activeElement === inputRef.current) return; // input will handle via Enter
+          onBarcode(code);
+        };
+        attachGlobalScan(handler);
+      }, []);
+
       return (
         <div>
           <Card title="Scan Items" actions={<Button onClick={undoLastSale}>Undo Last Sale (Today)</Button>}>
@@ -301,7 +331,9 @@
       );
     }
 
-    /** Admin — keeps Vendor Cost and shows ending inventory value (vendor cost) */
+    /* =======================
+       ADMIN VIEW
+       ======================= */
     function AdminView({ products, inventory, setInventory, filter, setFilter, addProduct, exportCSV, importCSV, sales, setSales, totals, setTab, setAdminUnlocked }){
       const [editingId, setEditingId] = useState(null);
       function updateField(id, field, value){ setInventory(prev => prev.map(p => p.id === id ? ({...p, [field]: value}) : p)); }
@@ -318,7 +350,6 @@
 
       async function syncCatalog(){
         const url = getGAS(); if(!url){ alert("Add Apps Script URL in Setup first."); return; }
-        // send current inventory to /catalog
         const payload = inventory.map(p => ({
           barcode: p.barcode||"", name: p.name||"", priceSold: p.priceSold||0,
           vendorCost: p.vendorCost||0, startingInventory: p.startingInventory||0
@@ -425,6 +456,9 @@
       );
     }
 
+    /* =======================
+       DAY CLOSE SUMMARY
+       ======================= */
     function DayClose({ products }){
       const totalUnits = products.reduce((a,p)=>a+p.soldToday,0);
       const totalRevenue = products.reduce((a,p)=>a+p.revenueToday,0);
@@ -438,6 +472,9 @@
       );
     }
 
+    /* =======================
+       FRONT TABLE (no costs)
+       ======================= */
     function InventoryTableFront({ products }){
       return (
         <div className="card">
@@ -472,7 +509,9 @@
       );
     }
 
-    /** Little setup box (top-right) */
+    /* =======================
+       SETUP BOX (top-right)
+       ======================= */
     function SetupBox(){
       const [open, setOpen] = useState(false);
       const url = getGAS();
@@ -486,7 +525,9 @@
       );
     }
 
-    /** App */
+    /* =======================
+       APP (with dedup + queue fix)
+       ======================= */
     function App(){
       const [tab, setTab] = useState("front");
       const [inventory, setInventory] = useState(loadInventory().length ? loadInventory() : [
@@ -496,14 +537,13 @@
       ]);
       const [sales, setSales] = useState(loadSales());
       const [filter, setFilter] = useState("");
-      const [adminUnlocked, setAdminUnlocked] = useState(false);
       const [showPassModal, setShowPassModal] = useState(false);
 
       useEffect(()=>saveInventory(inventory),[inventory]);
       useEffect(()=>saveSales(sales),[sales]);
-
       useEffect(() => { flushQueue(); }, []);
 
+      // reset local "today" list if day changes
       useEffect(() => {
         const today = todayKey();
         const last = localStorage.getItem(LS_LAST_DAY);
@@ -541,18 +581,40 @@
         return { unitsSold, revenue };
       },[products]);
 
+      // PATCHED: send first, queue on failure; also 300ms dedupe
       async function recordSale(barcode, qty=1, prod=null){
-        const inv = inventory.find(p=>p.barcode===barcode) || prod; if(!inv) return;
+        const inv = inventory.find(p=>p.barcode===barcode) || prod; 
+        if(!inv) return;
+
+        // simple de-dupe: ignore identical scan twice within 300ms
+        window.__lastScanSig ||= { code:"", t:0 };
+        const now = Date.now(), sig = `${barcode}|${qty}`;
+        if (window.__lastScanSig.code === sig && (now - window.__lastScanSig.t) < 300) return;
+        window.__lastScanSig = { code: sig, t: now };
+
         const ts = new Date().toISOString();
         const evt = { type:"sale", payload:{
-          ts, hotel: getHotelName(), barcode, name: inv.name, priceSold: inv.priceSold, qty, revenue:(inv.priceSold||0)*qty
+          ts,
+          hotel: getHotelName(),
+          barcode,
+          name: inv.name,
+          priceSold: inv.priceSold,
+          qty,
+          revenue:(inv.priceSold||0)*qty
         }};
-        // local UI
+
+        // Update UI immediately
         setSales(prev => [...prev, { barcode, qty, ts }]);
-        // queue + try send
-        const q = loadQueue(); q.push(evt); saveQueue(q);
-        const ok = await sendToGAS(evt); if (ok) flushQueue();
+
+        // Try network first; only queue if it fails
+        const ok = await sendToGAS(evt);
+        if (!ok) {
+          const q = loadQueue(); q.push(evt); saveQueue(q);
+        } else {
+          flushQueue(); // try to drain any older queued events
+        }
       }
+
       function undoLastSale(){
         const idx = [...sales].map((s,i)=>({s,i})).filter(({s})=>isToday(s.ts)).map(({i})=>i).pop();
         if(idx===undefined) return; const copy = [...sales]; copy.splice(idx,1); setSales(copy);
@@ -637,3 +699,4 @@
   </script>
 </body>
 </html>
+```
