@@ -173,18 +173,19 @@
   </div>
 
 <script>
-  // ===== Storage keys
+  /* ===== Storage keys ===== */
   const LS_INV="hotel_inventory_v1", LS_SALES="hotel_sales_v1", LS_ADMIN_PASS="hotel_admin_pass_v1";
   const LS_QUEUE="sales_queue_v1", LS_LAST_DAY="last_open_day_v1", LS_HOTEL="hotel_name_v1", LS_GAS="gas_webapp_url_v1";
 
-  // ===== Helpers
+  /* ===== Helpers ===== */
   const currency = n => isNaN(n) ? "-" : Number(n).toLocaleString(undefined,{style:"currency",currency:"USD"});
   const todayKey = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
   const isToday = ts => { try { return new Date(ts).toISOString().slice(0,10)===todayKey(); } catch { return false; } };
   const loadJSON = (k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch{ return f; }};
   const saveJSON = (k,v)=>localStorage.setItem(k,JSON.stringify(v));
+  const escapeHtml = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-  // ===== App state (localStorage-backed)
+  /* ===== App state ===== */
   let inventory = loadJSON(LS_INV, [
     { id: crypto.randomUUID(), barcode:"0123456789012", name:"Bottled Water 16oz", priceSold:1.99, vendorCost:0.45, startingInventory:50, category:"Drinks" },
     { id: crypto.randomUUID(), barcode:"1234567890123", name:"Chips - Classic",    priceSold:2.49, vendorCost:0.65, startingInventory:40, category:"Snacks" },
@@ -193,69 +194,45 @@
   let sales = loadJSON(LS_SALES, []);
   let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
 
-  // new day reset of local "today" sales list
+  // new day -> clear local "today" sales list
   (function(){ const t=todayKey(); const last=localStorage.getItem(LS_LAST_DAY); if(last && last!==t){ sales=[]; saveJSON(LS_SALES,sales); } localStorage.setItem(LS_LAST_DAY,t); })();
 
-  // ===== DOM refs
-  const frontBtn = document.getElementById('frontBtn');
-  const adminBtn = document.getElementById('adminBtn');
-  const frontView = document.getElementById('frontView');
-  const adminView = document.getElementById('adminView');
+  /* ===== DOM refs ===== */
+  const frontBtn=document.getElementById('frontBtn'), adminBtn=document.getElementById('adminBtn');
+  const frontView=document.getElementById('frontView'), adminView=document.getElementById('adminView');
 
-  const scanInput = document.getElementById('scanInput');
-  const filterInput = document.getElementById('filterInput');
-  const lastScan = document.getElementById('lastScan');
-  const frontTbody = document.querySelector('#frontTable tbody');
-  const unitsSoldEl = document.getElementById('unitsSold');
-  const revenueTodayEl = document.getElementById('revenueToday');
+  const scanInput=document.getElementById('scanInput'), filterInput=document.getElementById('filterInput'), lastScan=document.getElementById('lastScan');
+  const frontTbody=document.querySelector('#frontTable tbody'), unitsSoldEl=document.getElementById('unitsSold'), revenueTodayEl=document.getElementById('revenueToday');
 
-  const adminFilter = document.getElementById('adminFilter');
-  const adminTbody = document.querySelector('#adminTable tbody');
+  const adminFilter=document.getElementById('adminFilter'), adminTbody=document.querySelector('#adminTable tbody');
 
-  const hotelBadge = document.getElementById('hotelBadge');
-  const gasBadge = document.getElementById('gasBadge');
+  const hotelBadge=document.getElementById('hotelBadge'), gasBadge=document.getElementById('gasBadge');
+  const setupOpen=document.getElementById('setupOpen'), setupModal=document.getElementById('setupModal');
+  const hotelInput=document.getElementById('hotelInput'), gasInput=document.getElementById('gasInput'), setupMsg=document.getElementById('setupMsg');
+  const saveSetup=document.getElementById('saveSetup'), testPing=document.getElementById('testPing'), closeSetup=document.getElementById('closeSetup');
 
-  const setupOpen = document.getElementById('setupOpen');
-  const setupModal = document.getElementById('setupModal');
-  const hotelInput = document.getElementById('hotelInput');
-  const gasInput = document.getElementById('gasInput');
-  const setupMsg = document.getElementById('setupMsg');
-  const saveSetup = document.getElementById('saveSetup');
-  const testPing = document.getElementById('testPing');
-  const closeSetup = document.getElementById('closeSetup');
+  const passModal=document.getElementById('passModal'), passField=document.getElementById('passField'), passErr=document.getElementById('passErr');
+  const passCancel=document.getElementById('passCancel'), passOk=document.getElementById('passOk');
 
-  const passModal = document.getElementById('passModal');
-  const passField = document.getElementById('passField');
-  const passErr = document.getElementById('passErr');
-  const passCancel = document.getElementById('passCancel');
-  const passOk = document.getElementById('passOk');
+  const undoBtn=document.getElementById('undoBtn');
+  const addProduct=document.getElementById('addProduct'), exportCSV=document.getElementById('exportCSV'), importCSV=document.getElementById('importCSV');
+  const clearToday=document.getElementById('clearToday'), syncCatalog=document.getElementById('syncCatalog');
 
-  const undoBtn = document.getElementById('undoBtn');
-  const addProduct = document.getElementById('addProduct');
-  const exportCSV = document.getElementById('exportCSV');
-  const importCSV = document.getElementById('importCSV');
-  const clearToday = document.getElementById('clearToday');
-  const syncCatalog = document.getElementById('syncCatalog');
-
-  // ===== Setup state
+  /* ===== Setup state ===== */
   const getHotelName = ()=> localStorage.getItem(LS_HOTEL) || "Your Hotel Name";
   const setHotelName = n => localStorage.setItem(LS_HOTEL, n);
   const getGAS = ()=> localStorage.getItem(LS_GAS) || "";
   const setGAS = u => localStorage.setItem(LS_GAS, u);
+  function refreshBadges(){ hotelBadge.textContent=getHotelName(); gasBadge.textContent=getGAS() ? "Saved" : "Not set"; }
 
-  function refreshBadges(){
-    hotelBadge.textContent = getHotelName();
-    gasBadge.textContent = getGAS() ? "Saved" : "Not set";
-  }
-
-  // ===== Networking (send-first, queue-on-fail)
+  /* ===== Networking (send-first, queue-on-fail) ===== */
   const loadQueue = ()=>loadJSON(LS_QUEUE,[]);
   const saveQueue = q=>saveJSON(LS_QUEUE,q);
 
   async function sendToGAS(evt){
-    const url = getGAS(); if(!url) return true; // treat as success if not configured
+    const url=getGAS(); if(!url) return true;          // treat as success if not configured
     try{
-      await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(evt), mode:"no-cors" });
+      await fetch(url,{ method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(evt), mode:"no-cors" });
       return true;
     }catch(e){ return false; }
   }
@@ -268,29 +245,24 @@
   }
   window.addEventListener('online', flushQueue);
 
-  // ===== Derived “today” map
+  /* ===== Derived “today” map ===== */
   function todaySalesMap(){
     const m=new Map();
     for(const s of sales){ if(!isToday(s.ts)) continue; m.set(s.barcode,(m.get(s.barcode)||0)+(s.qty||0)); }
     return m;
   }
 
-  // ===== Renderers
+  /* ===== Renderers ===== */
   function renderFront(){
-    const query = (filterInput.value||"").trim().toLowerCase();
-    const map = todaySalesMap();
-    let totalUnits=0, totalRev=0;
-
-    frontTbody.innerHTML = "";
+    const query=(filterInput.value||"").trim().toLowerCase();
+    const map=todaySalesMap(); let totalUnits=0, totalRev=0;
+    frontTbody.innerHTML="";
     for(const p of inventory){
       if(query && !(p.name.toLowerCase().includes(query) || (p.barcode||"").toLowerCase().includes(query))) continue;
-      const sold = map.get(p.barcode)||0;
-      const end = Math.max(0,(p.startingInventory||0)-sold);
-      const rev = (p.priceSold||0)*sold;
-      totalUnits += sold; totalRev += rev;
-
+      const sold=map.get(p.barcode)||0, end=Math.max(0,(p.startingInventory||0)-sold), rev=(p.priceSold||0)*sold;
+      totalUnits+=sold; totalRev+=rev;
       const tr=document.createElement('tr');
-      tr.innerHTML = `
+      tr.innerHTML=`
         <td><div style="display:flex;align-items:center;gap:8px"><div style="font-weight:600">${escapeHtml(p.name)}</div><span class="pill">${escapeHtml(p.barcode||"no barcode")}</span></div></td>
         <td class="right">${currency(p.priceSold)}</td>
         <td class="right">${p.startingInventory||0}</td>
@@ -300,25 +272,18 @@
       `;
       frontTbody.appendChild(tr);
     }
-    unitsSoldEl.textContent = String(totalUnits);
-    revenueTodayEl.textContent = currency(totalRev);
+    unitsSoldEl.textContent=String(totalUnits);
+    revenueTodayEl.textContent=currency(totalRev);
   }
 
   function renderAdmin(){
-    const q=(adminFilter.value||"").trim().toLowerCase();
-    const map = todaySalesMap();
-    adminTbody.innerHTML = "";
+    const q=(adminFilter.value||"").trim().toLowerCase(); const map=todaySalesMap();
+    adminTbody.innerHTML="";
     for(const p of inventory){
       if(q && !(p.name.toLowerCase().includes(q) || (p.barcode||"").toLowerCase().includes(q) || (p.category||"").toLowerCase().includes(q))) continue;
-      const sold = map.get(p.barcode)||0;
-      const end = Math.max(0,(p.startingInventory||0)-sold);
-      const rev = (p.priceSold||0)*sold;
-      const endCost = (p.vendorCost||0)*end;
-
+      const sold=map.get(p.barcode)||0, end=Math.max(0,(p.startingInventory||0)-sold), rev=(p.priceSold||0)*sold, endCost=(p.vendorCost||0)*end;
       const tr=document.createElement('tr');
-
-      // Build editable row
-      tr.innerHTML = `
+      tr.innerHTML=`
         <td><input class="input" value="${escapeHtml(p.name)}" data-f="name" /></td>
         <td><input class="input" value="${escapeHtml(p.barcode||"")}" data-f="barcode" /></td>
         <td><input class="input" value="${escapeHtml(p.category||"")}" data-f="category" /></td>
@@ -329,15 +294,11 @@
         <td class="right">${end}</td>
         <td class="right">${currency(rev)}</td>
         <td class="right">${currency(endCost)}</td>
-        <td class="right">
-          <button class="btn" data-act="del">Delete</button>
-        </td>
+        <td class="right"><button class="btn" data-act="del">Delete</button></td>
       `;
-      // wire events
       tr.querySelectorAll('input').forEach(inp=>{
         inp.addEventListener('change', ()=>{
-          const f=inp.getAttribute('data-f');
-          let val=inp.value;
+          const f=inp.getAttribute('data-f'); let val=inp.value;
           if(f==='priceSold'||f==='vendorCost') val=parseFloat(val)||0;
           if(f==='startingInventory') val=parseInt(val)||0;
           p[f]=val; saveJSON(LS_INV, inventory); renderFront(); renderAdmin();
@@ -348,12 +309,11 @@
         inventory=inventory.filter(x=>x.id!==p.id);
         saveJSON(LS_INV, inventory); renderFront(); renderAdmin();
       });
-
       adminTbody.appendChild(tr);
     }
   }
 
-  // ===== Actions
+  /* ===== Actions ===== */
   document.getElementById('filterInput').addEventListener('input', renderFront);
   document.getElementById('adminFilter').addEventListener('input', renderAdmin);
 
@@ -373,8 +333,7 @@
   document.getElementById('importCSV').addEventListener('change', (ev)=>{
     const f=ev.target.files?.[0]; if(!f) return;
     const r=new FileReader(); r.onload=()=>{
-      const text=String(r.result||"");
-      const rows=text.split(/\r?\n/).filter(Boolean); if(!rows.length) return;
+      const text=String(r.result||""); const rows=text.split(/\r?\n/).filter(Boolean); if(!rows.length) return;
       const headers=rows[0].split(",").map(h=>h.trim()); const idx=k=>headers.indexOf(k);
       const out=[];
       for(let i=1;i<rows.length;i++){
@@ -431,29 +390,18 @@
 
   // Setup modal
   setupOpen.addEventListener('click', ()=>{
-    hotelInput.value=getHotelName();
-    gasInput.value=getGAS();
-    setupMsg.textContent="";
-    setupModal.style.display="grid";
+    hotelInput.value=getHotelName(); gasInput.value=getGAS(); setupMsg.textContent=""; setupModal.style.display="grid";
   });
   closeSetup.addEventListener('click', ()=>setupModal.style.display="none");
-  saveSetup.addEventListener('click', ()=>{
-    setHotelName(hotelInput.value.trim()||"Your Hotel Name");
-    setGAS(gasInput.value.trim());
-    refreshBadges();
-    setupMsg.textContent="Saved!";
-  });
+  saveSetup.addEventListener('click', ()=>{ setHotelName(hotelInput.value.trim()||"Your Hotel Name"); setGAS(gasInput.value.trim()); refreshBadges(); setupMsg.textContent="Saved!"; });
   testPing.addEventListener('click', async ()=>{
     const url=getGAS(); if(!url){ setupMsg.textContent="Paste your Web App URL first."; return; }
     setupMsg.textContent="Sending test ping…";
-    const ok = await sendToGAS({ type:"sale", payload:{
-      id: crypto.randomUUID(), ts:new Date().toISOString(), hotel:getHotelName(),
-      barcode:"TEST", name:"Ping", priceSold:0, qty:0, revenue:0
-    }});
+    const ok = await sendToGAS({ type:"sale", payload:{ id: crypto.randomUUID(), ts:new Date().toISOString(), hotel:getHotelName(), barcode:"TEST", name:"Ping", priceSold:0, qty:0, revenue:0 }});
     setupMsg.textContent = ok ? "Ping sent (check Sales tab)" : "Ping failed (check deployment/permissions).";
   });
 
-  // Front scan: input-only, Enter/CR
+  // Front scan: input-only, Enter/CR, 300ms de-dupe, UUID
   scanInput.addEventListener('keydown', async (e)=>{
     if(e.key!=='Enter') return;
     const code=scanInput.value.trim(); scanInput.value="";
@@ -474,34 +422,33 @@
     }
   });
 
-  // Undo last (today)
-  undoBtn.addEventListener('click', ()=>{
+  // Undo last (today) — also deletes on Sheet
+  undoBtn.addEventListener('click', async ()=>{
     const idx=[...sales].map((s,i)=>({s,i})).filter(({s})=>isToday(s.ts)).map(({i})=>i).pop();
     if(idx===undefined) return;
-    const copy=[...sales]; copy.splice(idx,1); sales=copy; saveJSON(LS_SALES, sales); renderFront(); renderAdmin();
+    const removed = sales[idx];                  // { id, barcode, qty, ts }
+    const copy=[...sales]; copy.splice(idx,1); sales=copy; saveJSON(LS_SALES, sales);
+    renderFront(); renderAdmin();
+    await sendUndoToGAS(removed.id);
   });
 
-  // Record sale (send-first, queue on fail, UUID)
   async function recordSale(prod, qty){
     const ts=new Date().toISOString(), id=crypto.randomUUID();
-    // update local UI immediately
     sales.push({ id, barcode: prod.barcode, qty, ts }); saveJSON(LS_SALES, sales); renderFront(); renderAdmin();
-
-    const evt={ type:"sale", payload:{
-      id, ts, hotel:getHotelName(), barcode:prod.barcode, name:prod.name,
-      priceSold: prod.priceSold, qty, revenue: (prod.priceSold||0)*qty
-    }};
-    const ok=await sendToGAS(evt);
-    if(!ok){ const q=loadQueue(); q.push(evt); saveQueue(q); } else { flushQueue(); }
+    const evt={ type:"sale", payload:{ id, ts, hotel:getHotelName(), barcode:prod.barcode, name:prod.name, priceSold: prod.priceSold, qty, revenue:(prod.priceSold||0)*qty }};
+    const ok=await sendToGAS(evt); if(!ok){ const q=loadQueue(); q.push(evt); saveQueue(q); } else { flushQueue(); }
   }
 
-  function escapeHtml(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  async function sendUndoToGAS(id){
+    if (!id) return true;
+    const evt = { type:"undo", payload:{ id } };
+    const ok = await sendToGAS(evt);
+    if (!ok){ const q=loadQueue(); q.push(evt); saveQueue(q); return false; }
+    flushQueue(); return true;
+  }
 
   // Initial
-  refreshBadges();
-  renderFront();
-  flushQueue();
-  scanInput.focus();
+  refreshBadges(); renderFront(); flushQueue(); scanInput.focus();
 </script>
 </body>
 </html>
