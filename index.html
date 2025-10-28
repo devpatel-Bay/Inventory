@@ -174,7 +174,6 @@
       <div class="card" style="margin-top:12px;">
         <div class="card-title">
           <h3 style="margin:0; font-size:16px; font-weight:600">Settings</h3>
-          <span class="small">Defaults are hard-coded; you can override below (per device).</span>
         </div>
         <div class="row" style="align-items:center; margin-bottom:8px">
           <label style="width:160px" class="small">Hotel name</label>
@@ -308,37 +307,26 @@
     const get = k => parts.find(p => p.type===k)?.value || '00';
     return { hour:get('hour'), minute:get('minute') };
   }
-  function resetTodayLocal(){
-    sales = [];
-    saveJSON(LS_SALES, sales);
-    localStorage.setItem(LS_LAST_DAY, todayKey());
-    localStorage.setItem(LS_CLEARED_ON, todayKeyCST());
-    renderFront(); renderScanLog(); renderAdmin();
-  }
-  function checkSevenClear(){
-    const { hour, minute } = nowCSTParts();
-    const todayCST = todayKeyCST();
-    const already = localStorage.getItem(LS_CLEARED_ON);
-    if (hour === '07' && minute === '00' && already !== todayCST) {
-      resetTodayLocal();
-      showToast('Daily reset at 7:00 AM CST', 'ok', 1800);
-    }
-  }
 
-  /******** App state ********/
-  let inventory = loadJSON(LS_INV, [
+  /******** App state (Sheet is the source of truth) ********/
+  let inventory = loadJSON(LS_INV, []);   // filled by Sheet
+  let sales     = loadJSON(LS_SALES, []); // filled by Sheet
+  let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
+
+  // Fallback seed (only if pull fails AND cache empty)
+  const SEED_FALLBACK = [
     { id: crypto.randomUUID(), barcode:"0123456789012", name:"Bottled Water 16oz", priceSold:1.99, vendorCost:0.45, startingInventory:50, category:"Drinks" },
     { id: crypto.randomUUID(), barcode:"1234567890123", name:"Chips - Classic",    priceSold:2.49, vendorCost:0.65, startingInventory:40, category:"Snacks" },
     { id: crypto.randomUUID(), barcode:"2345678901234", name:"Chocolate Bar",      priceSold:2.99, vendorCost:0.85, startingInventory:35, category:"Snacks" }
-  ]);
-  let sales = loadJSON(LS_SALES, []);
-  let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
+  ];
+  let initialSynced = false;
 
-  // Seed defaults on every device if nothing saved yet
+  // Seed defaults per-device for hotel name + GAS URL
   if (!localStorage.getItem(LS_HOTEL)) localStorage.setItem(LS_HOTEL, DEFAULT_HOTEL_NAME);
-  if (!localStorage.getItem(LS_GAS))   localStorage.setItem(LS_GAS, DEFAULT_GAS_URL);
+  if (!localStorage.getItem(LS_GAS))   localStorage.setItem(LS_GAS,   DEFAULT_GAS_URL);
 
-  (function(){ const t=todayKey(); const last=localStorage.getItem(LS_LAST_DAY); if(last && last!==t){ sales=[]; saveJSON(LS_SALES,sales); } localStorage.setItem(LS_LAST_DAY,t); })();
+  // Preserve last-day stamp
+  (function(){ const t=todayKey(); const last=localStorage.getItem(LS_LAST_DAY); localStorage.setItem(LS_LAST_DAY,t); })();
 
   /******** DOM refs ********/
   const frontBtn = document.getElementById('frontBtn');
@@ -363,7 +351,7 @@
 
   const hotelBadge = document.getElementById('hotelBadge');
 
-  // Admin settings refs (moved here)
+  // Admin settings refs
   const hotelInput = document.getElementById('hotelInput');
   const gasInput = document.getElementById('gasInput');
   const setupMsg = document.getElementById('setupMsg');
@@ -423,19 +411,20 @@
   }
   window.addEventListener('online', flushQueue);
 
-  /******** Pull from server on load ********/
-  async function pullTodayFromServer(){
+  /******** Pull from server (authoritative) ********/
+  async function pullTodayFromServer(forceToast=false){
     const url = getGAS();
-    if(!url) return;
-    try{
-      const resp = await fetch(url + '?summary=today');
-      const data = await resp.json();
-      if(!data?.ok) return;
+    if(!url) return false;
 
-      // Replace inventory from catalog
+    try{
+      const resp = await fetch(url + '?summary=today', { cache: 'no-store' });
+      const data = await resp.json();
+      if(!data?.ok) return false;
+
+      // Catalog → inventory
       const newInv = (data.catalog||[]).map(p => ({
         id: crypto.randomUUID(),
-        barcode: p.barcode || '',
+        barcode: String(p.barcode||''),
         name: p.name || '',
         priceSold: Number(p.priceSold)||0,
         vendorCost: Number(p.vendorCost)||0,
@@ -447,28 +436,30 @@
         saveJSON(LS_INV, inventory);
       }
 
-      // Replace today's sales from server raw rows
+      // Sales(today) → replace only today
       const today = todayKey();
       const rows = (data.salesTodayRaw||[]);
-      const local = rows.map(r => ({
-        id: r.id || crypto.randomUUID(),
-        barcode: r.barcode || '',
+      const serverToday = rows.map(r => ({
+        id: String(r.id || crypto.randomUUID()),
+        barcode: String(r.barcode || ''),
         qty: Number(r.qty)||0,
         ts: r.ts || new Date().toISOString(),
         ld: today
       }));
-      sales = local;
+      const nonToday = (sales||[]).filter(s => (s.ld ? s.ld !== today : localDateKey(s.ts) !== today));
+      sales = [...nonToday, ...serverToday];
       saveJSON(LS_SALES, sales);
 
-      // If server has a hotel name in rows, reflect it; else stick to local/default
-      if((data.hotels||[]).length){
-        setHotelName(data.hotels[0]);
-      }
+      // Hotel name (if present)
+      if ((data.hotels||[]).length) setHotelName(data.hotels[0]);
 
-      renderFront(); renderScanLog(); renderAdmin();
-      showToast('Synced from Google Sheets', 'ok');
+      refreshBadges();
+      renderFront(); renderScanLog(); if (adminView.style.display !== 'none') renderAdmin();
+      if (forceToast) showToast('Synced from Google Sheets', 'ok');
+      initialSynced = true;
+      return true;
     }catch(e){
-      // Silent if GET blocked
+      return false;
     }
   }
 
@@ -637,6 +628,7 @@
     const payload=inventory.map(p=>({ barcode:p.barcode||"", name:p.name||"", priceSold:p.priceSold||0, vendorCost:p.vendorCost||0, startingInventory:p.startingInventory||0 }));
     await fetch(url,{ method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({type:"catalog", payload}), mode:"no-cors" });
     alert("Catalog sync sent. Check the 'Catalog' tab.");
+    await pullTodayFromServer(true);   // re-pull authoritative snapshot
   });
 
   /******** Tabs + admin auth ********/
@@ -648,7 +640,6 @@
       passModal.style.display="none";
       frontBtn.classList.remove('primary'); adminBtn.classList.add('primary');
       frontView.style.display="none"; adminView.style.display="block";
-      // Initialize settings fields with current values
       hotelInput.value = getHotelName();
       gasInput.value = getGAS();
       setupMsg.textContent = '';
@@ -662,11 +653,12 @@
   });
 
   /******** Settings (Admin) ********/
-  saveSetup.addEventListener('click', ()=>{
+  saveSetup.addEventListener('click', async ()=>{
     setHotelName(hotelInput.value.trim());
     setGAS(gasInput.value.trim());
     refreshBadges();
     setupMsg.textContent = 'Saved!';
+    await pullTodayFromServer(true);   // pull immediately with new settings
   });
   testPing.addEventListener('click', async ()=>{
     const url=getGAS(); if(!url){ setupMsg.textContent="Paste your Web App URL first."; return; }
@@ -768,7 +760,11 @@
     closeSession(); showToast('Session posted', 'ok');
 
     const ok = await postBatch(entries);
-    if(!ok){ const q=loadQueue(); q.push({type:"batch", payload:entries}); saveQueue(q); } else { flushQueue(); }
+    if(!ok){ const q=loadQueue(); q.push({type:"batch", payload:entries}); saveQueue(q); }
+    else { 
+      await flushQueue(); 
+      await pullTodayFromServer(true);   // authoritative refresh
+    }
   });
   scanInput.addEventListener('click', ()=>{ openSession(); nudgeFocusBanner(); });
   function addChip(txt, kind='ok'){
@@ -815,21 +811,49 @@
     undoModal.style.display='none';
 
     const ok = await sendToGAS({ type:"undo", payload:{ id:item.id, barcode:item.barcode, ts:item.ts }});
-    if(!ok){ const q=loadQueue(); q.push({ type:"undo", payload:{ id:item.id, barcode:item.barcode, ts:item.ts }}); saveQueue(q); } else { flushQueue(); }
+    if(!ok){ const q=loadQueue(); q.push({ type:"undo", payload:{ id:item.id, barcode:item.barcode, ts:item.ts }}); saveQueue(q); }
+    else { 
+      await flushQueue(); 
+      await pullTodayFromServer(true);   // authoritative refresh
+    }
   });
 
-  /******** Init ********/
+  /******** Init + time ********/
   function tickCST(){ cstClock.textContent = fmtTimeCST(new Date()); }
   async function init(){
     refreshBadges();
     ensureLocalDayOnSales();
-    await pullTodayFromServer();      // pulls from Sheet using hard-coded/default URL
-    renderFront(); renderScanLog();
-    flushQueue();
+
+    await flushQueue();                           // 1) push pending writes
+    const ok = await pullTodayFromServer(true);   // 2) pull canonical snapshot
+
+    if (!ok && (!inventory.length || !sales.length)) {
+      inventory = SEED_FALLBACK.slice();          // 3) only if nothing to show
+      saveJSON(LS_INV, inventory);
+    }
+
+    renderFront(); renderScanLog(); if (adminView.style.display !== 'none') renderAdmin(); // 4) show UI
+
     tickCST(); setInterval(tickCST, 1000);
+    setInterval(() => pullTodayFromServer(false), 60000); // background 60s sync
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') pullTodayFromServer(false);
+    });
   }
   init();
 
+  /******** 7:00 AM CST behavior: pull fresh snapshot (server clears) ********/
+  function resetTodayLocal(){ /* retained for manual Clear button */ }
+  async function checkSevenClear(){
+    const { hour, minute } = nowCSTParts();
+    const todayCST = todayKeyCST();
+    const already = localStorage.getItem(LS_CLEARED_ON);
+    if (hour === '07' && minute === '00' && already !== todayCST) {
+      await pullTodayFromServer(true);
+      localStorage.setItem(LS_CLEARED_ON, todayCST);
+      showToast('Daily refresh from server (7:00 AM CST)', 'ok', 1800);
+    }
+  }
   setInterval(checkSevenClear, 15000);
 </script>
 </body>
