@@ -83,7 +83,6 @@
       <div class="card" style="margin-top:16px;">
         <div class="card-title">
           <h3 style="margin:0; font-size:16px; font-weight:600">Today’s Scan Log</h3>
-          <div class="small">Auto-updates on scan/undo</div>
         </div>
         <div style="overflow:auto">
           <table id="logTable">
@@ -220,7 +219,7 @@
       <div style="max-height:260px; overflow:auto; border:1px solid var(--border); border-radius:12px;">
         <table style="width:100%; border-collapse:collapse;">
           <thead><tr><th style="padding:6px 8px;">Product</th><th>Barcode</th><th class="right" style="padding:6px 8px;">Qty</th><th class="right" style="padding:6px 8px;">Revenue</th></tr></thead>
-          <tbody id="sessionBody"></tbody>
+        <tbody id="sessionBody"></tbody>
         </table>
       </div>
       <div class="row" style="justify-content:flex-end; margin-top:12px">
@@ -245,7 +244,6 @@
   const saveJSON = (k,v)=>localStorage.setItem(k,JSON.stringify(v));
   const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   function fmtTime(ts){ try{ const d=new Date(ts); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }catch{ return '-'; } }
-  const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
   /******** App state ********/
   let inventory = loadJSON(LS_INV, [
@@ -325,10 +323,21 @@
     try{ await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(evt), mode:"no-cors" }); return true; }
     catch(e){ return false; }
   }
+  async function postBatch(entries){
+    const url = getGAS(); if(!url) return true;
+    try{
+      await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ type:"batch", payload: entries }), mode:"no-cors" });
+      return true;
+    }catch(e){ return false; }
+  }
   async function flushQueue(){
     const url=getGAS(); if(!url) return;
     const q=loadQueue(); if(!q.length) return;
-    const still=[]; for(const evt of q){ const ok = await sendToGAS(evt); if(!ok) still.push(evt); }
+    const still=[];
+    for(const evt of q){
+      const ok = evt?.type==="batch" ? await postBatch(evt.payload) : await sendToGAS(evt);
+      if(!ok) still.push(evt);
+    }
     saveQueue(still);
   }
   window.addEventListener('online', flushQueue);
@@ -339,7 +348,7 @@
   /******** Aggregations ********/
   function todaysAggregate(){
     const day = todayKey();
-    const byItem = new Map(); // barcode -> { name, price, sold, revenue, lastTs }
+    const byItem = new Map();
     for(const s of sales){
       const isToday = s.ld ? (s.ld===day) : (localDateKey(s.ts)===day);
       if(!isToday) continue;
@@ -531,13 +540,9 @@
     setupMsg.textContent = ok ? "Ping sent (check Sales tab)" : "Ping failed (check deployment/permissions).";
   });
 
-  /************ DOUBLE-ENTRY FIX ************/
-  // We use ONLY a single global scanner capture.
-  // Input field never handles Enter; it only opens the Scan Session modal.
-  // Also add a short per-barcode debounce so a single beep can't post twice.
+  /************ DOUBLE-ENTRY GUARD ************/
   const SCAN_DEBOUNCE_MS = 250;
   const recentScanTimes = new Map(); // barcode -> lastTimeMs
-
   function shouldAcceptScan(code){
     const now = Date.now();
     const last = recentScanTimes.get(code) || 0;
@@ -546,18 +551,17 @@
     return true;
   }
 
-  // Global scanner capture
+  /******** Global scanner capture ********/
   let buffer = '';
   let bufTimer = null;
-  const INTERVAL = 50; // ms key gap that separates scanner from typing
+  const INTERVAL = 50; // ms gap
 
   document.addEventListener('keydown', (e)=>{
-    // Ignore when typing in admin fields/search, EXCEPT during session modal
     const inSession = sessionModal.style.display === 'grid';
     const t = e.target; const tag = (t && t.tagName || '').toLowerCase();
     const isEditable = (tag==='input' || tag==='textarea' || t?.isContentEditable);
 
-    if(isEditable && !inSession) return; // only capture globally if not actively typing (unless session modal)
+    if(isEditable && !inSession) return;
 
     if(e.key==='Enter' || e.key==='NumpadEnter'){
       const code = buffer.trim(); buffer = '';
@@ -574,7 +578,6 @@
       bufTimer = setTimeout(()=>{ buffer=''; }, INTERVAL);
     }
 
-    // shortcut: U to undo (outside modal)
     if(!inSession && (e.key==='u' || e.key==='U')) { e.preventDefault(); undoLast(); }
   });
 
@@ -583,11 +586,11 @@
     setTimeout(()=> focusBanner.style.display='none', 1500);
   }
 
-  /******** Live scanning (immediate post) ********/
+  /******** Live scanning (immediate post; optional) ********/
   async function liveScan(code){
     const prod=inventory.find(p=>p.barcode===code);
     if(!prod){ lastScan.textContent = `Unknown barcode: ${code}`; addChip(`Unknown ${code}`, 'err'); beepErr(); showToast('Unknown barcode', 'err'); return; }
-    if(!shouldAcceptScan(code)) return; // debounce double
+    if(!shouldAcceptScan(code)) return;
 
     lastScan.innerHTML = `Last Scan: <b>${escapeHtml(prod.name)}</b> (${escapeHtml(code)}) • ${currency(prod.priceSold)}`;
     await recordSale(prod, 1);
@@ -607,10 +610,7 @@
   function sessionScan(code){
     const prod=inventory.find(p=>p.barcode===code);
     if(!prod){ addChip(`Unknown ${code}`, 'err'); beepErr(); showToast('Unknown barcode', 'err'); return; }
-
-    // Debounce inside session too (for same-barcode double fire)
     if(!shouldAcceptScan(code)) return;
-
     const cur = sessionMap.get(code) || 0;
     sessionMap.set(code, cur+1);
     sessionHint.textContent = 'Scanning…';
@@ -622,9 +622,9 @@
     let total=0, rev=0;
     for(const [bc, qty] of sessionMap.entries()){
       const p = inventory.find(x=>x.barcode===bc);
-      const tr = document.createElement('tr');
       const r = (p?.priceSold||0)*qty;
       total += qty; rev += r;
+      const tr = document.createElement('tr');
       tr.innerHTML = `<td style="padding:6px 8px;">${escapeHtml(p?.name||'(Unknown)')}</td>
         <td><span class="pill">${escapeHtml(bc)}</span></td>
         <td class="right" style="padding:6px 8px;">${qty}</td>
@@ -643,25 +643,32 @@
       sessionBody.appendChild(tr);
     }
   }
-
   sessionCancel.addEventListener('click', ()=> closeSession());
   sessionPost.addEventListener('click', async ()=>{
-    if(sessionMap.size===0){ closeSession(); return; }
-    // Commit as aggregated sales (one event per barcode with qty sum)
-    for(const [bc, qty] of sessionMap.entries()){
-      const p = inventory.find(x=>x.barcode===bc);
-      if(!p) continue;
-      await recordSale(p, qty);
+    if (sessionMap.size === 0) { closeSession(); return; }
+
+    // Build single batched payload
+    const now = new Date(); const ts = now.toISOString(); const hotel = getHotelName();
+    const entries = [];
+    for (const [bc, qty] of sessionMap.entries()){
+      const p = inventory.find(x=>x.barcode===bc); if(!p) continue;
+      entries.push({ id: crypto.randomUUID(), ts, hotel, barcode: bc, name: p.name, priceSold: p.priceSold||0, qty, revenue: (p.priceSold||0)*qty });
     }
-    closeSession();
-    showToast('Session posted', 'ok');
+
+    // Optimistic UI: local update first
+    const ld = localDateKey(now);
+    for (const e of entries) sales.push({ id:e.id, barcode:e.barcode, qty:e.qty, ts:e.ts, ld });
+    saveJSON(LS_SALES, sales);
+    renderFront(); renderScanLog(); renderAdmin?.();
+    closeSession(); showToast('Session posted', 'ok');
+
+    // Network (one call)
+    const ok = await postBatch(entries);
+    if(!ok){ const q=loadQueue(); q.push({type:"batch", payload:entries}); saveQueue(q); } else { flushQueue(); }
   });
 
-  // Open session when clicking the barcode input
-  scanInput.addEventListener('click', ()=>{
-    openSession();
-    nudgeFocusBanner();
-  });
+  // Open session on input click
+  scanInput.addEventListener('click', ()=>{ openSession(); nudgeFocusBanner(); });
 
   function addChip(txt, kind='ok'){
     const span=document.createElement('span'); span.className = `chip ${kind==='err'?'err':'ok'}`; span.textContent = txt; scanStrip.prepend(span);
@@ -678,9 +685,8 @@
     const evt = { type:"undo", payload:{ id: removed.id || "", barcode: removed.barcode || "", ts: removed.ts || "" } };
     const ok = await sendToGAS(evt); if (!ok) { const q=loadQueue(); q.push(evt); saveQueue(q); } else { flushQueue(); }
   }
-  document.addEventListener('keydown', (e)=>{ if(sessionModal.style.display!=='grid' && (e.key==='u'||e.key==='U')){ e.preventDefault(); undoLast(); } });
 
-  /******** Record sale (single or aggregated) ********/
+  /******** Record sale for live scans ********/
   async function recordSale(prod, qty){
     const now = new Date(); const ts = now.toISOString(); const id = crypto.randomUUID(); const ld = localDateKey(now);
     sales.push({ id, barcode: prod.barcode, qty, ts, ld }); saveJSON(LS_SALES, sales);
