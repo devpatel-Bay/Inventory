@@ -40,6 +40,21 @@
   .chip.err { border-color:#fecaca; background:#fef2f2; }
   .banner { background:#fff7ed; border:1px solid #fed7aa; color:#7c2d12; padding:8px 12px; border-radius:12px; margin-top:8px; display:none; }
   .pill-kbd { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; border:1px solid var(--border); padding:1px 6px; border-radius:6px; background:#fff; }
+
+  /* Mobile-friendly tweaks only */
+  @media (max-width: 640px) {
+    .container { padding: 12px; }
+    h1 { font-size: 18px; }
+    .btn { padding: 8px 10px; font-size: 13px; }
+    table { font-size: 12px; }
+    th, td { padding: 6px; }
+    .row { flex-wrap: wrap; }
+    header > div:last-child { width: 100%; display:flex; gap:8px; }
+    header > div:last-child .btn { flex:1 1 50%; }
+    #frontView .card .row > .grow,
+    #frontView .card .row > div[style*="width:320px"] { width:100% !important; }
+    .pill { font-size: 11px; padding: 2px 6px; }
+  }
 </style>
 </head>
 <body>
@@ -83,7 +98,6 @@
 
       <div id="scanStrip" aria-live="polite"></div>
 
-      <!-- Moved here: Units & Revenue summary directly under Scan Items -->
       <div class="row" style="gap:16px; margin-top:12px;">
         <div class="card grow" style="margin-top:0;">
           <div class="small">Units Sold Today</div>
@@ -227,7 +241,7 @@
       <div style="max-height:260px; overflow:auto; border:1px solid var(--border); border-radius:12px;">
         <table style="width:100%; border-collapse:collapse;">
           <thead><tr><th style="padding:6px 8px;">Product</th><th>Barcode</th><th class="right" style="padding:6px 8px;">Qty</th><th class="right" style="padding:6px 8px;">Revenue</th></tr></thead>
-          <tbody id="sessionBody"></tbody>
+        <tbody id="sessionBody"></tbody>
         </table>
       </div>
       <div class="row" style="justify-content:flex-end; margin-top:12px">
@@ -269,6 +283,7 @@
   /******** Storage keys ********/
   const LS_INV="hotel_inventory_v1", LS_SALES="hotel_sales_v1", LS_ADMIN_PASS="hotel_admin_pass_v1";
   const LS_QUEUE="sales_queue_v1", LS_LAST_DAY="last_open_day_v1", LS_HOTEL="hotel_name_v1", LS_GAS="gas_webapp_url_v1";
+  const LS_CLEARED_ON = "cleared_on_cst_v1";
 
   /******** Helpers ********/
   const currency = n => isNaN(n) ? "-" : Number(n).toLocaleString(undefined,{style:"currency",currency:"USD"});
@@ -281,6 +296,30 @@
   function fmtTimeCST(date){
     return new Intl.DateTimeFormat('en-US',{ timeZone:'America/Chicago', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' }).format(date);
   }
+  function todayKeyCST(){
+    return new Intl.DateTimeFormat('en-CA', { timeZone:'America/Chicago', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+  }
+  function nowCSTParts(){
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone:'America/Chicago', hour:'2-digit', minute:'2-digit', hour12:false }).formatToParts(new Date());
+    const get = k => parts.find(p => p.type===k)?.value || '00';
+    return { hour:get('hour'), minute:get('minute') };
+  }
+  function resetTodayLocal(){
+    sales = [];
+    saveJSON(LS_SALES, sales);
+    localStorage.setItem(LS_LAST_DAY, todayKey());
+    localStorage.setItem(LS_CLEARED_ON, todayKeyCST());
+    renderFront(); renderScanLog(); renderAdmin();
+  }
+  function checkSevenClear(){
+    const { hour, minute } = nowCSTParts();
+    const todayCST = todayKeyCST();
+    const already = localStorage.getItem(LS_CLEARED_ON);
+    if (hour === '07' && minute === '00' && already !== todayCST) {
+      resetTodayLocal();
+      showToast('Daily reset at 7:00 AM CST', 'ok', 1800);
+    }
+  }
 
   /******** App state ********/
   let inventory = loadJSON(LS_INV, [
@@ -291,7 +330,6 @@
   let sales = loadJSON(LS_SALES, []);
   let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
 
-  // New day: clear ONLY today's local cache (optional)
   (function(){ const t=todayKey(); const last=localStorage.getItem(LS_LAST_DAY); if(last && last!==t){ sales=[]; saveJSON(LS_SALES,sales); } localStorage.setItem(LS_LAST_DAY,t); })();
 
   /******** DOM refs ********/
@@ -358,7 +396,7 @@
   const setGAS = u => localStorage.setItem(LS_GAS, u);
   function refreshBadges(){ hotelBadge.textContent = getHotelName(); }
 
-  /******** Networking (send-first, queue-on-fail) ********/
+  /******** Networking ********/
   const loadQueue = ()=>loadJSON(LS_QUEUE,[]);
   const saveQueue = q=>saveJSON(LS_QUEUE,q);
   async function sendToGAS(evt){
@@ -385,7 +423,56 @@
   }
   window.addEventListener('online', flushQueue);
 
-  /******** Local-day stamping on old rows ********/
+  /******** Pull from server on load (Option 1) ********/
+  async function pullTodayFromServer(){
+    const url = getGAS();
+    if(!url) return;
+    try{
+      const resp = await fetch(url + '?summary=today'); // simple GET, parse JSON
+      const data = await resp.json();
+      if(!data?.ok) return;
+
+      // Replace inventory from catalog
+      const newInv = (data.catalog||[]).map(p => ({
+        id: crypto.randomUUID(),
+        barcode: p.barcode || '',
+        name: p.name || '',
+        priceSold: Number(p.priceSold)||0,
+        vendorCost: Number(p.vendorCost)||0,
+        startingInventory: Number(p.startingInventory)||0,
+        category: '' // optional
+      }));
+      if(newInv.length){
+        inventory = newInv;
+        saveJSON(LS_INV, inventory);
+      }
+
+      // Replace today's sales from server raw rows (so multi-device matches)
+      const today = todayKey();
+      const rows = (data.salesTodayRaw||[]);
+      const local = rows.map(r => ({
+        id: r.id || crypto.randomUUID(),
+        barcode: r.barcode || '',
+        qty: Number(r.qty)||0,
+        ts: r.ts || new Date().toISOString(),
+        ld: today
+      }));
+      sales = local;
+      saveJSON(LS_SALES, sales);
+
+      // If server has the hotel name, show first one (optional)
+      if((data.hotels||[]).length){
+        setHotelName(data.hotels[0]);
+      }
+
+      renderFront(); renderScanLog(); renderAdmin();
+      showToast('Synced from Google Sheets', 'ok');
+    }catch(e){
+      // Silent fail if fetch blocked or not deployed public
+    }
+  }
+
+  /******** Local-day stamping ********/
   function ensureLocalDayOnSales(){ let changed=false; sales.forEach(s=>{ if(!s.ld){ s.ld=localDateKey(s.ts); changed=true; } }); if(changed) saveJSON(LS_SALES,sales); }
 
   /******** Aggregations ********/
@@ -557,7 +644,7 @@
   adminBtn.addEventListener('click', ()=>{ passErr.textContent=""; passField.value=""; passModal.style.display="grid"; });
   passCancel.addEventListener('click', ()=> passModal.style.display="none");
   passOk.addEventListener('click', ()=>{
-    if(passField.value===adminPass){
+    if(passField.value===localStorage.getItem(LS_ADMIN_PASS) || passField.value===adminPass){
       passModal.style.display="none";
       frontBtn.classList.remove('primary'); adminBtn.classList.add('primary');
       frontView.style.display="none"; adminView.style.display="block";
@@ -565,13 +652,13 @@
     } else { passErr.textContent="Incorrect password"; }
   });
   document.getElementById('changePass').addEventListener('click', ()=>{
-    const cur=prompt("Current password:"); if(cur!==adminPass) return alert("Incorrect.");
+    const cur=prompt("Current password:"); if(cur!==(localStorage.getItem(LS_ADMIN_PASS)||adminPass)) return alert("Incorrect.");
     const next=prompt("New password:"); if(!next) return;
     adminPass=next; localStorage.setItem(LS_ADMIN_PASS, adminPass); alert("Password updated.");
   });
 
   /******** Setup modal ********/
-  setupOpen.addEventListener('click', ()=>{
+  document.getElementById('setupOpen').addEventListener('click', ()=>{
     hotelInput.value=getHotelName(); gasInput.value=getGAS(); setupMsg.textContent=""; setupModal.style.display="grid";
   });
   closeSetup.addEventListener('click', ()=>setupModal.style.display="none");
@@ -583,10 +670,9 @@
     setupMsg.textContent = ok ? "Ping sent (check Sales tab)" : "Ping failed (check deployment/permissions).";
   });
 
-  /************ Scanner activation rules ************/
-  // Scanner ONLY works inside Scan Session modal.
+  /************ Scanner (session only) ************/
   const SCAN_DEBOUNCE_MS = 250;
-  const recentScanTimes = new Map(); // barcode -> lastTimeMs
+  const recentScanTimes = new Map();
   function shouldAcceptScan(code){
     const now = Date.now();
     const last = recentScanTimes.get(code) || 0;
@@ -594,15 +680,10 @@
     recentScanTimes.set(code, now);
     return true;
   }
-
-  let buffer = '';
-  let bufTimer = null;
-  const INTERVAL = 50; // ms gap
-
+  let buffer = ''; let bufTimer = null; const INTERVAL = 50;
   document.addEventListener('keydown', (e)=>{
     const inSession = sessionModal.style.display === 'grid';
-    if(!inSession) return; // <— ignore keys unless session is open
-
+    if(!inSession) return;
     if(e.key==='Enter' || e.key==='NumpadEnter'){
       const code = buffer.trim(); buffer = '';
       if(code){ sessionScan(code); }
@@ -622,7 +703,7 @@
   }
 
   /******** Scan Session ONLY ********/
-  let sessionMap = new Map(); // barcode -> qty
+  let sessionMap = new Map();
   function openSession(){
     sessionMap = new Map();
     sessionHint.textContent = 'Waiting for first scan…';
@@ -630,7 +711,6 @@
     sessionModal.style.display = 'grid';
   }
   function closeSession(){ sessionModal.style.display = 'none'; }
-
   function sessionScan(code){
     const prod=inventory.find(p=>p.barcode===code);
     if(!prod){ addChip(`Unknown ${code}`, 'err'); beepErr(); showToast('Unknown barcode', 'err'); return; }
@@ -670,60 +750,28 @@
   sessionCancel.addEventListener('click', ()=> closeSession());
   sessionPost.addEventListener('click', async ()=>{
     if (sessionMap.size === 0) { closeSession(); return; }
-
-    // Build single batched payload
     const now = new Date(); const ts = now.toISOString(); const hotel = getHotelName();
     const entries = [];
     for (const [bc, qty] of sessionMap.entries()){
       const p = inventory.find(x=>x.barcode===bc); if(!p) continue;
       entries.push({ id: crypto.randomUUID(), ts, hotel, barcode: bc, name: p.name, priceSold: p.priceSold||0, qty, revenue: (p.priceSold||0)*qty });
     }
-
-    // Optimistic UI: local update first
     const ld = localDateKey(now);
     for (const e of entries) sales.push({ id:e.id, barcode:e.barcode, qty:e.qty, ts:e.ts, ld });
     saveJSON(LS_SALES, sales);
     renderFront(); renderScanLog();
     closeSession(); showToast('Session posted', 'ok');
 
-    // Network (one call)
     const ok = await postBatch(entries);
     if(!ok){ const q=loadQueue(); q.push({type:"batch", payload:entries}); saveQueue(q); } else { flushQueue(); }
   });
-
-  // Open session on input click
   scanInput.addEventListener('click', ()=>{ openSession(); nudgeFocusBanner(); });
-
   function addChip(txt, kind='ok'){
     const span=document.createElement('span'); span.className = `chip ${kind==='err'?'err':'ok'}`; span.textContent = txt; scanStrip.prepend(span);
     const max=12; while(scanStrip.children.length>max){ scanStrip.removeChild(scanStrip.lastChild); }
   }
 
   /******** Undo Picker ********/
-  undoOpen.addEventListener('click', ()=>{
-    buildUndoTable();
-    undoModal.style.display = 'grid';
-  });
-  undoCancel.addEventListener('click', ()=> undoModal.style.display='none');
-  undoConfirm.addEventListener('click', async ()=>{
-    const sel = document.querySelector('input[name="undoPick"]:checked');
-    if(!sel){ alert('Pick one item to remove.'); return; }
-    const id = sel.value;
-    const item = sales.find(s=>s.id===id);
-    if(!item){ alert('Item not found.'); return; }
-
-    // Remove locally
-    sales = sales.filter(s=>s.id!==id);
-    saveJSON(LS_SALES, sales);
-    renderFront(); renderScanLog();
-    showToast('Removed selected item', 'ok');
-    undoModal.style.display='none';
-
-    // Notify GAS (best-effort)
-    const ok = await sendToGAS({ type:"undo", payload:{ id:item.id, barcode:item.barcode, ts:item.ts }});
-    if(!ok){ const q=loadQueue(); q.push({ type:"undo", payload:{ id:item.id, barcode:item.barcode, ts:item.ts }}); saveQueue(q); } else { flushQueue(); }
-  });
-
   function buildUndoTable(){
     const day = todayKey();
     const todayItems = sales.filter(s=> (s.ld?s.ld===day:localDateKey(s.ts)===day))
@@ -746,11 +794,35 @@
       undoBody.appendChild(tr);
     }
   }
+  document.getElementById('undoOpen').addEventListener('click', ()=>{ buildUndoTable(); undoModal.style.display='grid'; });
+  undoCancel.addEventListener('click', ()=> undoModal.style.display='none');
+  undoConfirm.addEventListener('click', async ()=>{
+    const sel = document.querySelector('input[name="undoPick"]:checked');
+    if(!sel){ alert('Pick one item to remove.'); return; }
+    const id = sel.value;
+    const item = sales.find(s=>s.id===id);
+    if(!item){ alert('Item not found.'); return; }
+
+    sales = sales.filter(s=>s.id!==id);
+    saveJSON(LS_SALES, sales);
+    renderFront(); renderScanLog();
+    showToast('Removed selected item', 'ok');
+    undoModal.style.display='none';
+
+    const ok = await sendToGAS({ type:"undo", payload:{ id:item.id, barcode:item.barcode, ts:item.ts }});
+    if(!ok){ const q=loadQueue(); q.push({ type:"undo", payload:{ id:item.id, barcode:item.barcode, ts:item.ts }}); saveQueue(q); } else { flushQueue(); }
+  });
 
   /******** Init ********/
   function tickCST(){ cstClock.textContent = fmtTimeCST(new Date()); }
-  function init(){ refreshBadges(); ensureLocalDayOnSales(); renderFront(); renderScanLog(); flushQueue(); tickCST(); setInterval(tickCST, 1000); }
+  async function init(){
+    refreshBadges(); ensureLocalDayOnSales();
+    await pullTodayFromServer();       // <-- NEW: pull server state on load
+    renderFront(); renderScanLog(); flushQueue(); tickCST(); setInterval(tickCST, 1000);
+  }
   init();
+
+  setInterval(checkSevenClear, 15000);
 </script>
 </body>
 </html>
