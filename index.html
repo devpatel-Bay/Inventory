@@ -206,7 +206,6 @@
   const loadJSON = (k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch{ return f; }};
   const saveJSON = (k,v)=>localStorage.setItem(k,JSON.stringify(v));
   const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
   const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
   /******** App state ********/
@@ -219,7 +218,12 @@
   let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
 
   // New day: clear local "today" list (only today's cached view)
-  (function(){ const t=todayKey(); const last=localStorage.getItem(LS_LAST_DAY); if(last && last!==t){ sales=[]; saveJSON(LS_SALES,sales); } localStorage.setItem(LS_LAST_DAY,t); })();
+  (function(){
+    const t=todayKey();
+    const last=localStorage.getItem(LS_LAST_DAY);
+    if(last && last!==t){ sales=[]; saveJSON(LS_SALES,sales); }
+    localStorage.setItem(LS_LAST_DAY,t);
+  })();
 
   /******** DOM ********/
   const frontBtn = document.getElementById('frontBtn');
@@ -295,10 +299,24 @@
   }
   window.addEventListener('online', flushQueue);
 
+  /******** Local-day stamping (bullet-proof "today") ********/
+  function ensureLocalDayOnSales() {
+    let changed = false;
+    sales.forEach(s => {
+      if (!s.ld) { s.ld = localDateKey(s.ts); changed = true; }
+    });
+    if (changed) saveJSON(LS_SALES, sales);
+  }
+
   /******** Derived today map (LOCAL day) ********/
   function todaySalesMap(){
-    const m=new Map();
-    for(const s of sales){ if(!isTodayLocal(s.ts)) continue; m.set(s.barcode,(m.get(s.barcode)||0)+(s.qty||0)); }
+    const day = todayKey();
+    const m = new Map();
+    for (const s of sales) {
+      const isToday = s.ld ? (s.ld === day) : (localDateKey(s.ts) === day);
+      if (!isToday) continue;
+      m.set(s.barcode,(m.get(s.barcode)||0)+(s.qty||0));
+    }
     return m;
   }
 
@@ -443,7 +461,7 @@
 
   clearToday.addEventListener('click', ()=>{
     if(!confirm("Clear today’s sales (today only)?")) return;
-    const day=todayKey(); sales=sales.filter(s=>localDateKey(s.ts)!==day); saveJSON(LS_SALES,sales); renderFront(); renderAdmin();
+    const day=todayKey(); sales=sales.filter(s=> (s.ld ? s.ld !== day : localDateKey(s.ts)!==day) ); saveJSON(LS_SALES,sales); renderFront(); renderAdmin();
   });
 
   syncCatalog.addEventListener('click', async ()=>{
@@ -476,8 +494,6 @@
   });
 
   /******** Setup modal ********/
-  const hotelBadgeEl = document.getElementById('hotelBadge');
-  const gasBadgeEl = document.getElementById('gasBadge');
   setupOpen.addEventListener('click', ()=>{
     hotelInput.value=getHotelName();
     gasInput.value=getGAS();
@@ -575,44 +591,36 @@
     while(scanStrip.children.length>max){ scanStrip.removeChild(scanStrip.lastChild); }
   }
 
-  // Undo last (today) — also remove in Google Sheet (by id or by barcode+ts)
+  // Undo last (today) — remove local and tell backend (by id or barcode+ts)
   undoBtn.addEventListener('click', async ()=>{
-    const idx = [...sales]
-      .map((s,i)=>({s,i}))
-      .filter(({s})=> isTodayLocal(s.ts))
-      .map(({i})=> i)
+    const day = todayKey();
+    const idx = [...sales].map((s,i)=>({s,i}))
+      .filter(({s}) => (s.ld ? s.ld === day : localDateKey(s.ts) === day))
+      .map(({i}) => i)
       .pop();
+
     if(idx===undefined){ showToast('Nothing to undo', 'warn'); return; }
 
-    const removed = sales[idx];               // { id, barcode, qty, ts }
-    const copy = [...sales];
-    copy.splice(idx, 1);
-    sales = copy;
-    saveJSON(LS_SALES, sales);
+    const removed = sales[idx]; // { id, barcode, qty, ts, ld? }
+    const copy = [...sales]; copy.splice(idx, 1);
+    sales = copy; saveJSON(LS_SALES, sales);
+
     renderFront(); renderAdmin();
-    addChip(`UNDO ${removed.barcode}`, 'ok');
-    beepOk();
-    showToast('Last sale undone', 'ok');
+    addChip(`UNDO ${removed.barcode}`, 'ok'); beepOk(); showToast('Last sale undone', 'ok');
 
-    await sendUndoToGAS(removed);
-  });
-
-  async function sendUndoToGAS(removed){
     const evt = { type:"undo", payload:{ id: removed.id || "", barcode: removed.barcode || "", ts: removed.ts || "" } };
     const ok = await sendToGAS(evt);
-    if (!ok){
-      const q=loadQueue(); q.push(evt); saveQueue(q);
-      return false;
-    } else {
-      flushQueue();
-      return true;
-    }
-  }
+    if (!ok) { const q=loadQueue(); q.push(evt); saveQueue(q); } else { flushQueue(); }
+  });
 
-  // Record sale (send-first, queue on fail, UUID)
+  // Record sale — stamp local day (ld), update UI immediately, queue network
   async function recordSale(prod, qty){
-    const ts=new Date().toISOString(), id=crypto.randomUUID();
-    sales.push({ id, barcode: prod.barcode, qty, ts });
+    const now = new Date();
+    const ts = now.toISOString();
+    const id = crypto.randomUUID();
+    const ld = localDateKey(now); // local day stamp
+
+    sales.push({ id, barcode: prod.barcode, qty, ts, ld });
     saveJSON(LS_SALES, sales);
     renderFront(); renderAdmin();
 
@@ -627,6 +635,7 @@
   /******** Initial ********/
   function init(){
     refreshBadges();
+    ensureLocalDayOnSales();   // <- normalize older saved rows
     renderFront();
     flushQueue();
     scanInput.focus();
