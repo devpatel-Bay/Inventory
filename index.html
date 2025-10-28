@@ -77,9 +77,31 @@
 
       <div id="scanStrip" aria-live="polite"></div>
 
+      <!-- NEW: Today’s Scan Log (aggregate) -->
       <div class="card" style="margin-top:16px;">
         <div class="card-title">
-          <h3 style="margin:0; font-size:16px; font-weight:600">Inventory</h3>
+          <h3 style="margin:0; font-size:16px; font-weight:600">Today’s Scan Log</h3>
+          <div class="small">Auto-updates on scan/undo</div>
+        </div>
+        <div style="overflow:auto">
+          <table id="logTable">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Barcode</th>
+                <th class="right">UNITS SOLD TODAY</th>
+                <th class="right">REVENUE TODAY</th>
+                <th class="right">LAST SCAN</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-title">
+          <h3 style="margin:0; font-size:16px; font-weight:600">Inventory (ranked by Units Sold Today)</h3>
         </div>
         <div style="overflow:auto">
           <table id="frontTable">
@@ -188,27 +210,20 @@
   <div id="toast" class="toast"></div>
 
 <script>
-  /******** Storage keys ********/
+  /* Storage keys */
   const LS_INV="hotel_inventory_v1", LS_SALES="hotel_sales_v1", LS_ADMIN_PASS="hotel_admin_pass_v1";
   const LS_QUEUE="sales_queue_v1", LS_LAST_DAY="last_open_day_v1", LS_HOTEL="hotel_name_v1", LS_GAS="gas_webapp_url_v1";
 
-  /******** Helpers ********/
+  /* Helpers */
   const currency = n => isNaN(n) ? "-" : Number(n).toLocaleString(undefined,{style:"currency",currency:"USD"});
-
-  // Local date (client timezone) helpers — avoids UTC drift
-  const localDateKey = d => {
-    const dt = (d instanceof Date) ? d : new Date(d);
-    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
-  };
+  const localDateKey = d => { const dt = (d instanceof Date)? d : new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`; };
   const todayKey = () => localDateKey(new Date());
-  const isTodayLocal = ts => { try { return localDateKey(ts) === todayKey(); } catch { return false; } };
-
   const loadJSON = (k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch{ return f; }};
   const saveJSON = (k,v)=>localStorage.setItem(k,JSON.stringify(v));
   const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const sleep = ms => new Promise(r=>setTimeout(r,ms));
+  function fmtTime(ts){ try{ const d=new Date(ts); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }catch{ return '-'; } }
 
-  /******** App state ********/
+  /* App state */
   let inventory = loadJSON(LS_INV, [
     { id: crypto.randomUUID(), barcode:"0123456789012", name:"Bottled Water 16oz", priceSold:1.99, vendorCost:0.45, startingInventory:50, category:"Drinks" },
     { id: crypto.randomUUID(), barcode:"1234567890123", name:"Chips - Classic",    priceSold:2.49, vendorCost:0.65, startingInventory:40, category:"Snacks" },
@@ -217,15 +232,10 @@
   let sales = loadJSON(LS_SALES, []);
   let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
 
-  // New day: clear local "today" list (only today's cached view)
-  (function(){
-    const t=todayKey();
-    const last=localStorage.getItem(LS_LAST_DAY);
-    if(last && last!==t){ sales=[]; saveJSON(LS_SALES,sales); }
-    localStorage.setItem(LS_LAST_DAY,t);
-  })();
+  /* New day reset */
+  (function(){ const t=todayKey(); const last=localStorage.getItem(LS_LAST_DAY); if(last && last!==t){ sales=[]; saveJSON(LS_SALES,sales); } localStorage.setItem(LS_LAST_DAY,t); })();
 
-  /******** DOM ********/
+  /* DOM */
   const frontBtn = document.getElementById('frontBtn');
   const adminBtn = document.getElementById('adminBtn');
   const frontView = document.getElementById('frontView');
@@ -235,6 +245,7 @@
   const filterInput = document.getElementById('filterInput');
   const lastScan = document.getElementById('lastScan');
   const frontTbody = document.querySelector('#frontTable tbody');
+  const logTbody = document.querySelector('#logTable tbody');
   const unitsSoldEl = document.getElementById('unitsSold');
   const revenueTodayEl = document.getElementById('revenueToday');
   const focusBanner = document.getElementById('focusBanner');
@@ -268,95 +279,110 @@
   const clearToday = document.getElementById('clearToday');
   const syncCatalog = document.getElementById('syncCatalog');
 
-  /******** Setup state ********/
+  /* Setup state */
   const getHotelName = ()=> localStorage.getItem(LS_HOTEL) || "Your Hotel Name";
   const setHotelName = n => localStorage.setItem(LS_HOTEL, n);
   const getGAS = ()=> localStorage.getItem(LS_GAS) || "";
   const setGAS = u => localStorage.setItem(LS_GAS, u);
+  function refreshBadges(){ hotelBadge.textContent = getHotelName(); gasBadge.textContent = getGAS() ? "Saved" : "Not set"; }
 
-  function refreshBadges(){
-    hotelBadge.textContent = getHotelName();
-    gasBadge.textContent = getGAS() ? "Saved" : "Not set";
-  }
-
-  /******** Networking (send-first, queue-on-fail) ********/
+  /* Networking (send-first, queue-on-fail) */
   const loadQueue = ()=>loadJSON(LS_QUEUE,[]);
   const saveQueue = q=>saveJSON(LS_QUEUE,q);
-
   async function sendToGAS(evt){
-    const url = getGAS(); if(!url) return true; // treat as success if not configured
-    try{
-      await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(evt), mode:"no-cors" });
-      return true;
-    }catch(e){ return false; }
+    const url = getGAS(); if(!url) return true;
+    try{ await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(evt), mode:"no-cors" }); return true; }
+    catch(e){ return false; }
   }
   async function flushQueue(){
     const url=getGAS(); if(!url) return;
     const q=loadQueue(); if(!q.length) return;
-    const still=[];
-    for(const evt of q){ const ok = await sendToGAS(evt); if(!ok) still.push(evt); }
+    const still=[]; for(const evt of q){ const ok = await sendToGAS(evt); if(!ok) still.push(evt); }
     saveQueue(still);
   }
   window.addEventListener('online', flushQueue);
 
-  /******** Local-day stamping (bullet-proof "today") ********/
-  function ensureLocalDayOnSales() {
-    let changed = false;
-    sales.forEach(s => {
-      if (!s.ld) { s.ld = localDateKey(s.ts); changed = true; }
-    });
-    if (changed) saveJSON(LS_SALES, sales);
+  /* Ensure local-day stamp on existing rows */
+  function ensureLocalDayOnSales(){ let changed=false; sales.forEach(s=>{ if(!s.ld){ s.ld=localDateKey(s.ts); changed=true; } }); if(changed) saveJSON(LS_SALES,sales); }
+
+  /* Aggregations */
+  function todaysAggregate(){
+    const day = todayKey();
+    const byItem = new Map(); // barcode -> { name, price, sold, revenue, lastTs }
+    for(const s of sales){
+      const isToday = s.ld ? (s.ld===day) : (localDateKey(s.ts)===day);
+      if(!isToday) continue;
+      const bc = s.barcode;
+      const prod = inventory.find(p=>p.barcode===bc);
+      const name = prod?.name || '(Unknown)';
+      const price = prod?.priceSold || 0;
+      const rec = byItem.get(bc) || { name, price, sold:0, revenue:0, lastTs:null, barcode: bc };
+      rec.sold += (s.qty||0);
+      rec.revenue += (price*(s.qty||0));
+      if(!rec.lastTs || new Date(s.ts) > new Date(rec.lastTs)) rec.lastTs = s.ts;
+      byItem.set(bc, rec);
+    }
+    return Array.from(byItem.values());
   }
 
-  /******** Derived today map (LOCAL day) ********/
   function todaySalesMap(){
-    const day = todayKey();
+    const agg = todaysAggregate();
     const m = new Map();
-    for (const s of sales) {
-      const isToday = s.ld ? (s.ld === day) : (localDateKey(s.ts) === day);
-      if (!isToday) continue;
-      m.set(s.barcode,(m.get(s.barcode)||0)+(s.qty||0));
-    }
+    agg.forEach(r=> m.set(r.barcode, r.sold));
     return m;
   }
 
-  /******** Toast + sounds ********/
+  /* Toast + sounds */
   const toastEl = document.getElementById('toast');
-  function showToast(msg, kind='ok', ms=1200){
-    toastEl.textContent = msg;
-    toastEl.className = `toast ${kind}`;
-    toastEl.style.display = 'block';
-    setTimeout(()=> toastEl.style.display='none', ms);
-  }
+  function showToast(msg, kind='ok', ms=1200){ toastEl.textContent = msg; toastEl.className = `toast ${kind}`; toastEl.style.display = 'block'; setTimeout(()=> toastEl.style.display='none', ms); }
   function beepOk(){ tone(880, 80); }
   function beepErr(){ tone(220, 160); }
-  function tone(freq, dur){
-    try{
-      const ctx = new (window.AudioContext||window.webkitAudioContext)();
-      const o = ctx.createOscillator(); const g = ctx.createGain();
-      o.type='sine'; o.frequency.value=freq;
-      o.connect(g); g.connect(ctx.destination);
-      g.gain.setValueAtTime(0.001, ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime+0.01);
-      o.start();
-      setTimeout(()=>{ g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.02); o.stop(ctx.currentTime+0.03); ctx.close(); }, dur);
-    }catch{}
+  function tone(freq, dur){ try{ const ctx = new (window.AudioContext||window.webkitAudioContext)(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.type='sine'; o.frequency.value=freq; o.connect(g); g.connect(ctx.destination); g.gain.setValueAtTime(0.001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime+0.01); o.start(); setTimeout(()=>{ g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.02); o.stop(ctx.currentTime+0.03); ctx.close(); }, dur);}catch{} }
+
+  /* Renderers */
+  function renderScanLog(){
+    const rows = todaysAggregate()
+      .sort((a,b)=> b.sold - a.sold || (new Date(b.lastTs)-new Date(a.lastTs)));
+    logTbody.innerHTML="";
+    for(const r of rows){
+      const tr=document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(r.name)}</td>
+        <td><span class="pill">${escapeHtml(r.barcode||'')}</span></td>
+        <td class="right">${r.sold}</td>
+        <td class="right">${currency(r.revenue)}</td>
+        <td class="right">${r.lastTs? fmtTime(r.lastTs): '-'}</td>
+      `;
+      logTbody.appendChild(tr);
+    }
+    if(!rows.length){
+      const tr=document.createElement('tr');
+      tr.innerHTML = `<td colspan="5" class="small">No scans yet today.</td>`;
+      logTbody.appendChild(tr);
+    }
   }
 
-  /******** Renderers ********/
   function renderFront(){
     const query = (filterInput.value||"").trim().toLowerCase();
     const map = todaySalesMap();
-    let totalUnits=0, totalRev=0;
 
-    frontTbody.innerHTML = "";
-    for(const p of inventory){
-      if(query && !(p.name.toLowerCase().includes(query) || (p.barcode||"").toLowerCase().includes(query))) continue;
+    // Build computed rows then sort by UNITS SOLD TODAY desc
+    const items = inventory.map(p=>{
       const sold = map.get(p.barcode)||0;
       const end = Math.max(0,(p.startingInventory||0)-sold);
       const rev = (p.priceSold||0)*sold;
-      totalUnits += sold; totalRev += rev;
+      return { p, sold, end, rev };
+    }).filter(row=>{
+      if(!query) return true;
+      return row.p.name.toLowerCase().includes(query) || (row.p.barcode||"").toLowerCase().includes(query);
+    }).sort((a,b)=> b.sold - a.sold);
 
+    // Render table
+    frontTbody.innerHTML = "";
+    let totalUnits=0, totalRev=0;
+    for(const row of items){
+      const {p, sold, end, rev} = row;
+      totalUnits += sold; totalRev += rev;
       const tr=document.createElement('tr');
       tr.innerHTML = `
         <td><div style="display:flex;align-items:center;gap:8px"><div style="font-weight:600">${escapeHtml(p.name)}</div><span class="pill">${escapeHtml(p.barcode||"no barcode")}</span></div></td>
@@ -382,7 +408,6 @@
       const end = Math.max(0,(p.startingInventory||0)-sold);
       const rev = (p.priceSold||0)*sold;
       const endCost = (p.vendorCost||0)*end;
-
       const tr=document.createElement('tr');
       tr.innerHTML = `
         <td><input class="input" value="${escapeHtml(p.name)}" data-f="name" /></td>
@@ -403,29 +428,27 @@
           let val=inp.value;
           if(f==='priceSold'||f==='vendorCost') val=parseFloat(val)||0;
           if(f==='startingInventory') val=parseInt(val)||0;
-          p[f]=val; saveJSON(LS_INV, inventory); renderFront(); renderAdmin();
+          p[f]=val; saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdmin();
         });
       });
       tr.querySelector('[data-act="del"]').addEventListener('click', ()=>{
         if(!confirm('Remove this product?')) return;
         inventory=inventory.filter(x=>x.id!==p.id);
-        saveJSON(LS_INV, inventory); renderFront(); renderAdmin();
+        saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdmin();
       });
-
       adminTbody.appendChild(tr);
     }
   }
 
-  /******** Actions: filters ********/
-  document.getElementById('filterInput').addEventListener('input', renderFront);
+  /* Filters */
+  document.getElementById('filterInput').addEventListener('input', ()=>{ renderFront(); renderScanLog(); });
   document.getElementById('adminFilter').addEventListener('input', renderAdmin);
 
-  /******** Catalog mgmt ********/
+  /* Catalog mgmt */
   addProduct.addEventListener('click', ()=>{
     inventory.push({ id:crypto.randomUUID(), barcode:"", name:"New Product", priceSold:0, vendorCost:0, startingInventory:0, category:"" });
-    saveJSON(LS_INV, inventory); renderFront(); renderAdmin();
+    saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdmin();
   });
-
   exportCSV.addEventListener('click', ()=>{
     const headers=["barcode","name","priceSold","vendorCost","startingInventory","category"];
     const body=inventory.map(p=>[p.barcode,p.name,p.priceSold,p.vendorCost,p.startingInventory,p.category||""].map(x=>String(x).replaceAll(",","")).join(",")).join("\n");
@@ -433,37 +456,28 @@
     const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
     const a=document.createElement('a'); a.href=url; a.download=`inventory_${todayKey()}.csv`; a.click(); URL.revokeObjectURL(url);
   });
-
   importCSV.addEventListener('change', (ev)=>{
     const f=ev.target.files?.[0]; if(!f) return;
     const r=new FileReader(); r.onload=()=>{
-      const text=String(r.result||"");
-      const rows=text.split(/\r?\n/).filter(Boolean); if(!rows.length) return;
+      const text=String(r.result||""); const rows=text.split(/\r?\n/).filter(Boolean); if(!rows.length) return;
       const headers=rows[0].split(",").map(h=>h.trim()); const idx=k=>headers.indexOf(k);
       const out=[];
       for(let i=1;i<rows.length;i++){
         const cols=rows[i].split(",");
-        out.push({
-          id: crypto.randomUUID(),
-          barcode: cols[idx("barcode")]?.trim() || "",
-          name: cols[idx("name")]?.trim() || "",
-          priceSold: parseFloat(cols[idx("priceSold")]) || 0,
-          vendorCost: parseFloat(cols[idx("vendorCost")]) || 0,
-          startingInventory: parseInt(cols[idx("startingInventory")]) || 0,
-          category: cols[idx("category")]?.trim() || ""
-        });
+        out.push({ id: crypto.randomUUID(), barcode: cols[idx("barcode")]?.trim() || "", name: cols[idx("name")]?.trim() || "",
+          priceSold: parseFloat(cols[idx("priceSold")]) || 0, vendorCost: parseFloat(cols[idx("vendorCost")]) || 0,
+          startingInventory: parseInt(cols[idx("startingInventory")]) || 0, category: cols[idx("category")]?.trim() || "" });
       }
-      if(out.length){ inventory=out; saveJSON(LS_INV, inventory); renderFront(); renderAdmin(); }
+      if(out.length){ inventory=out; saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdmin(); }
       ev.target.value="";
     };
     r.readAsText(f);
   });
-
   clearToday.addEventListener('click', ()=>{
     if(!confirm("Clear today’s sales (today only)?")) return;
-    const day=todayKey(); sales=sales.filter(s=> (s.ld ? s.ld !== day : localDateKey(s.ts)!==day) ); saveJSON(LS_SALES,sales); renderFront(); renderAdmin();
+    const day=todayKey(); sales=sales.filter(s=> (s.ld ? s.ld !== day : localDateKey(s.ts)!==day) ); saveJSON(LS_SALES,sales);
+    renderFront(); renderScanLog(); renderAdmin();
   });
-
   syncCatalog.addEventListener('click', async ()=>{
     const url=getGAS(); if(!url){ alert("Add Apps Script URL in Setup first."); return; }
     const payload=inventory.map(p=>({ barcode:p.barcode||"", name:p.name||"", priceSold:p.priceSold||0, vendorCost:p.vendorCost||0, startingInventory:p.startingInventory||0 }));
@@ -471,21 +485,13 @@
     alert("Catalog sync sent. Check the 'Catalog' tab.");
   });
 
-  /******** Tabs + admin auth ********/
+  /* Tabs + admin auth */
   frontBtn.addEventListener('click', ()=>{ frontBtn.classList.add('primary'); adminBtn.classList.remove('primary'); frontView.style.display="block"; adminView.style.display="none"; scanInput.focus(); });
-  adminBtn.addEventListener('click', ()=>{
-    passErr.textContent=""; passField.value=""; passModal.style.display="grid";
-  });
-  passCancel.addEventListener('click', ()=> passModal.style.display="none");
-  passOk.addEventListener('click', ()=>{
-    if(passField.value===adminPass){
-      passModal.style.display="none";
-      frontBtn.classList.remove('primary'); adminBtn.classList.add('primary');
-      frontView.style.display="none"; adminView.style.display="block";
-      renderAdmin();
-    } else {
-      passErr.textContent="Incorrect password";
-    }
+  adminBtn.addEventListener('click', ()=>{ passErr.textContent=""; passField.value=""; passModal.style.display="grid"; });
+  document.getElementById('passCancel').addEventListener('click', ()=> passModal.style.display="none");
+  document.getElementById('passOk').addEventListener('click', ()=>{
+    if(passField.value===adminPass){ passModal.style.display="none"; frontBtn.classList.remove('primary'); adminBtn.classList.add('primary'); frontView.style.display="none"; adminView.style.display="block"; renderAdmin(); }
+    else { passErr.textContent="Incorrect password"; }
   });
   document.getElementById('changePass').addEventListener('click', ()=>{
     const cur=prompt("Current password:"); if(cur!==adminPass) return alert("Incorrect.");
@@ -493,77 +499,33 @@
     adminPass=next; localStorage.setItem(LS_ADMIN_PASS, adminPass); alert("Password updated.");
   });
 
-  /******** Setup modal ********/
+  /* Setup modal */
   setupOpen.addEventListener('click', ()=>{
-    hotelInput.value=getHotelName();
-    gasInput.value=getGAS();
-    setupMsg.textContent="";
-    setupModal.style.display="grid";
+    hotelInput.value=getHotelName(); gasInput.value=getGAS(); setupMsg.textContent=""; setupModal.style.display="grid";
   });
   closeSetup.addEventListener('click', ()=>setupModal.style.display="none");
-  saveSetup.addEventListener('click', ()=>{
-    setHotelName(hotelInput.value.trim()||"Your Hotel Name");
-    setGAS(gasInput.value.trim());
-    refreshBadges();
-    setupMsg.textContent="Saved!";
-  });
+  saveSetup.addEventListener('click', ()=>{ setHotelName(hotelInput.value.trim()||"Your Hotel Name"); setGAS(gasInput.value.trim()); refreshBadges(); setupMsg.textContent="Saved!"; });
   testPing.addEventListener('click', async ()=>{
     const url=getGAS(); if(!url){ setupMsg.textContent="Paste your Web App URL first."; return; }
     setupMsg.textContent="Sending test ping…";
-    const ok = await sendToGAS({ type:"sale", payload:{
-      id: crypto.randomUUID(), ts:new Date().toISOString(), hotel:getHotelName(),
-      barcode:"TEST", name:"Ping", priceSold:0, qty:0, revenue:0
-    }});
+    const ok = await sendToGAS({ type:"sale", payload:{ id: crypto.randomUUID(), ts:new Date().toISOString(), hotel:getHotelName(), barcode:"TEST", name:"Ping", priceSold:0, qty:0, revenue:0 }});
     setupMsg.textContent = ok ? "Ping sent (check Sales tab)" : "Ping failed (check deployment/permissions).";
   });
 
-  /******** Scanner handling ********/
-  // 1) Standard input (when focused)
+  /* Scanner handling */
   scanInput.addEventListener('keydown', async (e)=>{
     if(e.key!=='Enter' && e.key!=='NumpadEnter') return;
-    const code=scanInput.value.trim(); scanInput.value="";
-    if(!code) return;
-    await onScan(code);
+    const code=scanInput.value.trim(); scanInput.value=""; if(!code) return; await onScan(code);
   });
-
-  // 2) Global capture (works even if input not focused)
-  let buffer = '';
-  let bufTimer = null;
-  const INTERVAL = 50; // ms gap that separates scans vs human typing
+  let buffer = ''; let bufTimer = null; const INTERVAL = 50;
   document.addEventListener('keydown', (e)=>{
-    // ignore if typing in inputs except our scanInput
-    const t = e.target;
-    const tag = t && (t.tagName || '').toLowerCase();
-    const isEditable = (tag==='input' || tag==='textarea' || t.isContentEditable);
+    const t = e.target; const tag = t && (t.tagName || '').toLowerCase(); const isEditable = (tag==='input' || tag==='textarea' || t.isContentEditable);
     if(isEditable && t!==scanInput) return;
-
-    if(e.key==='Enter' || e.key==='NumpadEnter'){
-      const code = buffer.trim();
-      buffer = '';
-      if(code){ onScan(code); }
-      e.preventDefault();
-      return;
-    }
-    if(e.key.length===1){
-      buffer += e.key;
-      clearTimeout(bufTimer);
-      bufTimer = setTimeout(()=>{ buffer=''; }, INTERVAL);
-    }
+    if(e.key==='Enter' || e.key==='NumpadEnter'){ const code = buffer.trim(); buffer = ''; if(code){ onScan(code); } e.preventDefault(); return; }
+    if(e.key.length===1){ buffer += e.key; clearTimeout(bufTimer); bufTimer = setTimeout(()=>{ buffer=''; }, INTERVAL); }
   });
-
-  // Focus guard: if page becomes visible, refocus
-  document.addEventListener('visibilitychange', ()=>{
-    if(!document.hidden){ scanInput.focus(); }
-  });
-
-  // Add a small banner if input wasn’t focused when scan happened
-  function nudgeFocus(){
-    if(document.activeElement !== scanInput){
-      scanInput.focus();
-      focusBanner.style.display = 'block';
-      setTimeout(()=> focusBanner.style.display='none', 1500);
-    }
-  }
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden){ scanInput.focus(); } });
+  function nudgeFocus(){ if(document.activeElement !== scanInput){ scanInput.focus(); focusBanner.style.display='block'; setTimeout(()=> focusBanner.style.display='none', 1500); } }
 
   async function onScan(code){
     nudgeFocus();
@@ -571,75 +533,38 @@
     if(prod){
       lastScan.innerHTML = `Last Scan: <b>${escapeHtml(prod.name)}</b> (${escapeHtml(code)}) • ${currency(prod.priceSold)}`;
       await recordSale(prod, 1);
-      addChip(`${prod.name} • +1`, 'ok');
-      beepOk();
-      showToast('Sale recorded', 'ok');
+      addChip(`${prod.name} • +1`, 'ok'); beepOk(); showToast('Sale recorded', 'ok');
     }else{
       lastScan.textContent = `Unknown barcode: ${code}`;
-      addChip(`Unknown ${code}`, 'err');
-      beepErr();
-      showToast('Unknown barcode', 'err');
+      addChip(`Unknown ${code}`, 'err'); beepErr(); showToast('Unknown barcode', 'err');
     }
   }
-
   function addChip(txt, kind='ok'){
-    const span=document.createElement('span');
-    span.className = `chip ${kind==='err'?'err':'ok'}`;
-    span.textContent = txt;
-    scanStrip.prepend(span);
-    const max=12; // keep it tidy
-    while(scanStrip.children.length>max){ scanStrip.removeChild(scanStrip.lastChild); }
+    const span=document.createElement('span'); span.className = `chip ${kind==='err'?'err':'ok'}`; span.textContent = txt; scanStrip.prepend(span);
+    const max=12; while(scanStrip.children.length>max){ scanStrip.removeChild(scanStrip.lastChild); }
   }
 
-  // Undo last (today) — remove local and tell backend (by id or barcode+ts)
   undoBtn.addEventListener('click', async ()=>{
     const day = todayKey();
-    const idx = [...sales].map((s,i)=>({s,i}))
-      .filter(({s}) => (s.ld ? s.ld === day : localDateKey(s.ts) === day))
-      .map(({i}) => i)
-      .pop();
-
+    const idx = [...sales].map((s,i)=>({s,i})).filter(({s}) => (s.ld ? s.ld === day : localDateKey(s.ts) === day)).map(({i}) => i).pop();
     if(idx===undefined){ showToast('Nothing to undo', 'warn'); return; }
-
-    const removed = sales[idx]; // { id, barcode, qty, ts, ld? }
-    const copy = [...sales]; copy.splice(idx, 1);
-    sales = copy; saveJSON(LS_SALES, sales);
-
-    renderFront(); renderAdmin();
-    addChip(`UNDO ${removed.barcode}`, 'ok'); beepOk(); showToast('Last sale undone', 'ok');
+    const removed = sales[idx]; const copy = [...sales]; copy.splice(idx, 1); sales = copy; saveJSON(LS_SALES, sales);
+    renderFront(); renderScanLog(); renderAdmin(); addChip(`UNDO ${removed.barcode}`, 'ok'); beepOk(); showToast('Last sale undone', 'ok');
 
     const evt = { type:"undo", payload:{ id: removed.id || "", barcode: removed.barcode || "", ts: removed.ts || "" } };
-    const ok = await sendToGAS(evt);
-    if (!ok) { const q=loadQueue(); q.push(evt); saveQueue(q); } else { flushQueue(); }
+    const ok = await sendToGAS(evt); if (!ok) { const q=loadQueue(); q.push(evt); saveQueue(q); } else { flushQueue(); }
   });
 
-  // Record sale — stamp local day (ld), update UI immediately, queue network
   async function recordSale(prod, qty){
-    const now = new Date();
-    const ts = now.toISOString();
-    const id = crypto.randomUUID();
-    const ld = localDateKey(now); // local day stamp
-
-    sales.push({ id, barcode: prod.barcode, qty, ts, ld });
-    saveJSON(LS_SALES, sales);
-    renderFront(); renderAdmin();
-
-    const evt={ type:"sale", payload:{
-      id, ts, hotel:getHotelName(), barcode:prod.barcode, name:prod.name,
-      priceSold: prod.priceSold, qty, revenue: (prod.priceSold||0)*qty
-    }};
-    const ok=await sendToGAS(evt);
-    if(!ok){ const q=loadQueue(); q.push(evt); saveQueue(q); } else { flushQueue(); }
+    const now = new Date(); const ts = now.toISOString(); const id = crypto.randomUUID(); const ld = localDateKey(now);
+    sales.push({ id, barcode: prod.barcode, qty, ts, ld }); saveJSON(LS_SALES, sales);
+    renderFront(); renderScanLog(); renderAdmin();
+    const evt={ type:"sale", payload:{ id, ts, hotel:getHotelName(), barcode:prod.barcode, name:prod.name, priceSold: prod.priceSold, qty, revenue: (prod.priceSold||0)*qty }};
+    const ok=await sendToGAS(evt); if(!ok){ const q=loadQueue(); q.push(evt); saveQueue(q); } else { flushQueue(); }
   }
 
-  /******** Initial ********/
-  function init(){
-    refreshBadges();
-    ensureLocalDayOnSales();   // <- normalize older saved rows
-    renderFront();
-    flushQueue();
-    scanInput.focus();
-  }
+  /* Init */
+  function init(){ refreshBadges(); ensureLocalDayOnSales(); renderFront(); renderScanLog(); flushQueue(); scanInput.focus(); }
   init();
 </script>
 </body>
