@@ -1,938 +1,181 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-<meta charset="UTF-8" />
-<title>Hotel Inventory & Sales Tracker</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hotel Inventory Tracker</title>
 <style>
-  :root {
-    --bg:#0b0f14;           /* dark, finance-y */
-    --card:#0f141b;
-    --card-2:#111821;
-    --border:#1f2a37;
-    --text:#f3f4f6;
-    --muted:#9aa4b2;
-    --ok:#22c55e;           /* green up */
-    --err:#ef4444;          /* red down */
-    --warn:#f59e0b;
-    --accent:#2dd4bf;       /* robinhood-ish teal accent */
-  }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-         background:var(--bg); color:var(--text); }
-  .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
-  header { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
-  h1 { font-size: 22px; font-weight: 800; letter-spacing:.2px; margin:0; }
-  .sub { font-size:12px; color:var(--muted); }
-  .btn { border:1px solid var(--border); background:var(--card-2); padding:8px 12px; border-radius:14px; font-size:14px; cursor:pointer; color:var(--text); }
-  .btn.primary { background:var(--accent); color:#051013; font-weight:700; }
-  .btn:active { transform: scale(.98); }
-  .card { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px; box-shadow: 0 1px 2px rgba(0,0,0,.25); margin-top:16px; }
-  .card-ghost { background:var(--card-2); border:1px dashed var(--border); border-radius:16px; padding:10px 12px; }
-  .card-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px; }
-  .input { width:100%; border:1px solid var(--border); background:#0c1218; color:var(--text); border-radius:12px; padding:10px; font-size:14px; }
-  .input[readonly] { cursor:pointer; }
-  .input[type="number"] { text-align:right; }
-  table { width:100%; border-collapse:collapse; font-size:14px; }
-  thead tr { background:#0c131a; }
-  th, td { text-align:left; padding:8px; border-bottom:1px solid var(--border); vertical-align: middle; }
-  th.right, td.right { text-align:right; }
-  .small { font-size:12px; color:var(--muted); }
-  .pill { display:inline-flex; border:1px solid var(--border); background:#0c131a; border-radius:999px; padding:2px 8px; font-size:12px; color:#a9b5c3; }
-  .row { display:flex; gap:12px; }
-  .wrap { flex-wrap: wrap; }
-  .grow { flex:1 1 auto; }
-  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; place-items:center; padding:16px; z-index:1000; }
-  .modal { background:var(--card); border:1px solid var(--border); border-radius:16px; width:100%; max-width:680px; padding:16px; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
-  .toast { position:fixed; top:12px; right:12px; z-index:2000; padding:10px 14px; border-radius:12px; color:#051013; font-weight:700; display:none; }
-  .toast.ok { background:var(--ok); }
-  .toast.err { background:var(--err); color:#fff; }
-  .toast.warn { background:var(--warn); }
-  #scanStrip { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-  .chip { border:1px solid var(--border); background:#0c131a; border-radius:999px; padding:4px 8px; font-size:12px; }
-  .chip.ok { border-color:#064e3b; background:#022a20; color:#7ee2af; }
-  .chip.err { border-color:#7f1d1d; background:#2a0a0a; color:#f5a3a3; }
-  .banner { background:#1a1303; border:1px solid #7a5908; color:#ffd89b; padding:8px 12px; border-radius:12px; margin-top:8px; display:none; }
-  .spark { width:120px; height:32px; display:block; }
-  .stk { display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--card-2); border:1px solid var(--border); border-radius:14px; padding:10px 12px; }
-  .stk .name { font-weight:700; }
-  .stk .price { font-variant-numeric: tabular-nums; }
-  .stk.up { border-color:#064e3b; }
-  .stk.down { border-color:#7f1d1d; }
-  .tag-up { color:var(--ok); }
-  .tag-down { color:var(--err); }
-  .accordion-item { border:1px solid var(--border); border-radius:12px; margin-top:8px; overflow:hidden; }
-  .accordion-head { display:flex; align-items:center; justify-content:space-between; background:#0c131a; padding:10px 12px; cursor:pointer; }
-  .accordion-body { display:none; background:#0f141b; padding:10px 12px; }
+body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#111;margin:0}
+.container{max-width:1100px;margin:auto;padding:20px}
+header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+h1{font-size:20px;margin:0}
+.btn{background:#007bff;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer}
+.btn:active{transform:scale(.98)}
+.card{background:#fafafa;border:1px solid #ccc;border-radius:10px;padding:14px;margin-top:15px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{border-bottom:1px solid #eee;padding:8px;text-align:left}
+th.right,td.right{text-align:right}
+.small{font-size:12px;color:#555}
+.input{padding:6px 8px;border:1px solid #ccc;border-radius:6px;width:100%;font-size:14px}
+canvas{width:100%;max-width:800px;height:250px;margin-top:10px}
+.toast{position:fixed;top:12px;right:12px;padding:10px 14px;border-radius:10px;background:#007bff;color:#fff;display:none}
 </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div>
-        <h1>Hotel Inventory & Sales Tracker</h1>
-        <div class="sub">Local time (America/Chicago): <b id="cstClock">--:--:--</b> • Shift boundary: 7:00 AM</div>
-      </div>
-      <div>
-        <button id="frontBtn" class="btn primary">Front Desk (Scan)</button>
-        <button id="adminBtn" class="btn">Admin</button>
-      </div>
-    </header>
-
-    <div class="row" style="align-items:center; justify-content:space-between; margin-top:8px;">
-      <div class="small">Hotel: <b id="hotelBadge">Your Hotel Name</b></div>
-      <button id="setupOpen" class="btn">Setup</button>
-    </div>
-
-    <div id="focusBanner" class="banner">Scanner is inactive until you open a Scan Session. Click the input below to start.</div>
-
-    <!-- Front Desk -->
-    <section id="frontView" class="card">
-      <div class="card-title">
-        <h3 style="margin:0; font-size:16px; font-weight:700">Scan Items</h3>
-        <div class="small">Open a Scan Session to capture barcodes (keyboard shortcut disabled).</div>
-      </div>
-
-      <div class="row wrap">
-        <div class="grow">
-          <div class="small" style="margin-bottom:6px">Barcode Input (opens scan session)</div>
-          <input id="scanInput" class="input" placeholder="Click here to start a Scan Session" readonly />
-          <div id="lastScan" class="small" style="margin-top:8px"></div>
-        </div>
-        <div style="width:320px">
-          <div class="small" style="margin-bottom:6px">Quick Search</div>
-          <input id="filterInput" class="input" placeholder="Filter by name or barcode" />
-        </div>
-      </div>
-
-      <div id="scanStrip" aria-live="polite"></div>
-
-      <!-- Summary directly under Scan Items -->
-      <div class="row" style="gap:16px; margin-top:12px;">
-        <div class="card-ghost grow">
-          <div class="small">Units Sold (current shift-day)</div>
-          <div id="unitsSold" style="font-size:20px; font-weight:800">0</div>
-        </div>
-        <div class="card-ghost grow">
-          <div class="small">Revenue (Price × Units)</div>
-          <div id="revenueToday" style="font-size:20px; font-weight:800">$0.00</div>
-        </div>
-        <div class="card-ghost">
-          <div class="small">Actions</div>
-          <button id="undoOpen" class="btn" style="margin-top:6px;">Undo a Posted Item…</button>
-        </div>
-      </div>
-
-      <!-- Today’s Scan Log -->
-      <div class="card" style="margin-top:16px;">
-        <div class="card-title">
-          <h3 style="margin:0; font-size:16px; font-weight:700">Today’s Scan Log</h3>
-        </div>
-        <div style="overflow:auto">
-          <table id="logTable">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Barcode</th>
-                <th class="right">UNITS SOLD (shift-day)</th>
-                <th class="right">REVENUE (shift-day)</th>
-                <th class="right">LAST SCAN</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Inventory ranked -->
-      <div class="card" style="margin-top:16px;">
-        <div class="card-title">
-          <h3 style="margin:0; font-size:16px; font-weight:700">Inventory (ranked by Units Sold Today)</h3>
-        </div>
-        <div style="overflow:auto">
-          <table id="frontTable">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th class="right">PRICE SOLD</th>
-                <th class="right">STARTING INVENTORY</th>
-                <th class="right">UNITS SOLD (shift-day)</th>
-                <th class="right">ENDING INVENTORY</th>
-                <th class="right">PRICE SOLD × UNITS SOLD</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- Admin -->
-    <section id="adminView" class="card" style="display:none">
-      <div class="card-title">
-        <h3 style="margin:0; font-size:16px; font-weight:700">Admin Controls</h3>
-        <div class="row">
-          <button id="addProduct" class="btn">Add Product</button>
-          <button id="exportCSV" class="btn">Export CSV</button>
-          <label class="btn" style="cursor:pointer">Import CSV<input id="importCSV" type="file" accept=".csv" style="display:none" /></label>
-          <button id="clearToday" class="btn">Clear Today Sales</button>
-          <button id="syncCatalog" class="btn">Sync Catalog → Sheet</button>
-          <button id="changePass" class="btn">Change Password</button>
-        </div>
-      </div>
-
-      <!-- Robinhood-like cards -->
-      <div class="row wrap" id="stkRow" style="gap:12px;"></div>
-
-      <div class="card" style="margin-top:16px;">
-        <div class="card-title">
-          <h3 style="margin:0; font-size:16px; font-weight:700">Product Table</h3>
-          <input id="adminFilter" class="input" placeholder="Filter by name, barcode, or category" style="max-width:320px" />
-        </div>
-        <div style="overflow:auto">
-          <table id="adminTable">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Barcode</th>
-                <th>Category</th>
-                <th class="right">PRICE SOLD</th>
-                <th class="right">VENDOR COST</th>
-                <th class="right">STARTING INVENTORY</th>
-                <th class="right">UNITS SOLD (shift-day)</th>
-                <th class="right">ENDING INVENTORY</th>
-                <th class="right">PRICE SOLD × UNITS SOLD</th>
-                <th class="right">ENDING INVENTORY (×) VENDOR COST</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Daily Log -->
-      <div class="card" style="margin-top:16px;">
-        <div class="card-title">
-          <h3 style="margin:0; font-size:16px; font-weight:700">Daily Log (shift-days at 7 AM CST)</h3>
-        </div>
-        <div id="dayLog"></div>
-      </div>
-    </section>
+<div class="container">
+<header>
+  <h1>Hotel Inventory & Sales Tracker</h1>
+  <div>
+    <button id="frontBtn" class="btn">Front Desk</button>
+    <button id="adminBtn" class="btn">Admin</button>
   </div>
+</header>
+<div class="small">CST Time: <b id="cstClock">--</b></div>
 
-  <!-- Setup Modal -->
-  <div id="setupModal" class="modal-backdrop">
-    <div class="modal">
-      <h3 style="margin-top:0">Setup</h3>
-      <div class="row" style="align-items:center; margin-bottom:8px">
-        <label style="width:140px">Hotel name</label>
-        <input id="hotelInput" class="input grow" />
-      </div>
-      <div class="row" style="align-items:center">
-        <label style="width:140px">Apps Script URL</label>
-        <input id="gasInput" class="input grow" placeholder="https://script.google.com/macros/s/.../exec" />
-      </div>
-      <div id="setupMsg" class="small" style="margin-top:8px"></div>
-      <div class="row" style="justify-content:flex-end; margin-top:12px">
-        <button id="saveSetup" class="btn">Save URL</button>
-        <button id="testPing" class="btn">Send test ping</button>
-        <button id="closeSetup" class="btn primary">Close</button>
-      </div>
-    </div>
+<!-- FRONT -->
+<section id="frontView" class="card">
+  <h3>Scan Items</h3>
+  <input id="scanInput" class="input" placeholder="Click here to start scanning" readonly>
+  <div id="lastScan" class="small" style="margin-top:5px"></div>
+  <table id="frontTable">
+    <thead><tr>
+      <th>Product</th><th class="right">Price</th><th class="right">Start</th>
+      <th class="right">Sold</th><th class="right">End</th><th class="right">Revenue</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<!-- ADMIN -->
+<section id="adminView" class="card" style="display:none">
+  <h3>Admin Panel</h3>
+  <button id="exportCSV" class="btn">Export CSV</button>
+  <button id="testEmail" class="btn" style="background:#28a745">Send Test Email</button>
+  <div id="revenueCard" class="card">
+    <h4>Daily Revenue Trend</h4>
+    <canvas id="revChart"></canvas>
   </div>
+  <table id="adminTable">
+    <thead><tr>
+      <th>Name</th><th>Barcode</th><th class="right">Price</th><th class="right">Cost</th><th class="right">Start Inv.</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+</div>
 
-  <!-- Admin Password Modal -->
-  <div id="passModal" class="modal-backdrop">
-    <div class="modal">
-      <h3 style="margin-top:0">Enter Admin Password</h3>
-      <input id="passField" class="input" type="password" placeholder="Password (default: admin123)" />
-      <div id="passErr" style="color:#ef4444; margin-top:6px; font-size:14px"></div>
-      <div class="row" style="justify-content:flex-end; margin-top:12px">
-        <button id="passCancel" class="btn">Cancel</button>
-        <button id="passOk" class="btn primary">Unlock</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Scan Session Modal -->
-  <div id="sessionModal" class="modal-backdrop">
-    <div class="modal">
-      <h3 style="margin-top:0">Scan Session</h3>
-      <div class="small" style="margin-bottom:6px">Scanner is active now. Scan items; press Enter after each barcode.</div>
-      <div id="sessionHint" class="small" style="margin-bottom:8px">Waiting for first scan…</div>
-      <div style="max-height:260px; overflow:auto; border:1px solid var(--border); border-radius:12px;">
-        <table style="width:100%; border-collapse:collapse;">
-          <thead><tr><th style="padding:6px 8px;">Product</th><th>Barcode</th><th class="right" style="padding:6px 8px;">Qty</th><th class="right" style="padding:6px 8px;">Revenue</th></tr></thead>
-          <tbody id="sessionBody"></tbody>
-        </table>
-      </div>
-      <div class="row" style="justify-content:flex-end; margin-top:12px">
-        <button id="sessionCancel" class="btn">Cancel</button>
-        <button id="sessionPost" class="btn primary">Post</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Undo Picker Modal -->
-  <div id="undoModal" class="modal-backdrop">
-    <div class="modal">
-      <h3 style="margin-top:0">Undo a Posted Item</h3>
-      <div class="small" style="margin-bottom:8px">Select one of today’s posted entries to remove.</div>
-      <div style="max-height:300px; overflow:auto; border:1px solid var(--border); border-radius:12px;">
-        <table style="width:100%; border-collapse:collapse;">
-          <thead>
-            <tr>
-              <th></th>
-              <th>Time</th>
-              <th>Product</th>
-              <th>Barcode</th>
-              <th class="right">Qty</th>
-            </tr>
-          </thead>
-          <tbody id="undoBody"></tbody>
-        </table>
-      </div>
-      <div class="row" style="justify-content:flex-end; margin-top:12px">
-        <button id="undoCancel" class="btn">Cancel</button>
-        <button id="undoConfirm" class="btn primary">Remove Selected</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="toast" class="toast"></div>
-
+<div id="toast" class="toast"></div>
 <script>
-  /******** Storage keys ********/
-  const LS_INV="hotel_inventory_v2", LS_SALES="hotel_sales_v2", LS_ADMIN_PASS="hotel_admin_pass_v1";
-  const LS_QUEUE="sales_queue_v1", LS_SHIFT_KEY="last_shift_key_v1", LS_HOTEL="hotel_name_v1", LS_GAS="gas_webapp_url_v1";
-  const LS_HIST="sales_history_v1"; // per shift-day history for sparklines and day log
+/*** helpers ***/
+const LS_INV="hotel_inventory_v3",LS_SALES="hotel_sales_v3",LS_HOTEL="hotel_name_v3",LS_GAS="gas_webapp_v3";
+const currency=n=>"$"+(Number(n||0).toFixed(2));
+const loadJSON=(k,f)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):f}catch{return f}};
+const saveJSON=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+const escapeHtml=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+const nowCST=()=>new Date(new Date().toLocaleString("en-US",{timeZone:"America/Chicago"}));
+function shiftKeyCST(d){const z=d||nowCST();const hr=z.getHours();if(hr<7)z.setDate(z.getDate()-1);return z.toISOString().slice(0,10)}
 
-  /******** Helpers ********/
-  const currency = n => isNaN(n) ? "-" : Number(n).toLocaleString(undefined,{style:"currency",currency:"USD"});
-  function fmtCST(date, opts) {
-    return new Intl.DateTimeFormat('en-US', Object.assign({ timeZone:'America/Chicago' }, opts || {
-      year:'numeric', month:'2-digit', day:'2-digit',
-      hour:'2-digit', minute:'2-digit', second:'2-digit'
-    })).format(date);
-  }
-  function nowCST(){ return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })); }
-  function shiftKeyCST(d){
-    const z = d ? new Date(d) : nowCST();
-    // If time < 07:00 CST, we treat as previous day’s shift
-    const hour = z.getHours();
-    const base = new Date(z);
-    if (hour < 7) base.setDate(base.getDate()-1);
-    return `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}-${String(base.getDate()).padStart(2,'0')}`;
-  }
-  const loadJSON = (k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch{ return f; }};
-  const saveJSON = (k,v)=>localStorage.setItem(k,JSON.stringify(v));
-  const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+/*** init data ***/
+let inventory=loadJSON(LS_INV,[
+ {id:crypto.randomUUID(),barcode:"123",name:"Water",priceSold:1.99,vendorCost:0.5,startingInventory:50},
+ {id:crypto.randomUUID(),barcode:"456",name:"Chips",priceSold:2.49,vendorCost:0.6,startingInventory:40}
+]);
+let sales=loadJSON(LS_SALES,[]);
 
-  /******** App state ********/
-  let inventory = loadJSON(LS_INV, [
-    { id: crypto.randomUUID(), barcode:"0123456789012", name:"Bottled Water 16oz", priceSold:1.99, vendorCost:0.45, startingInventory:50, category:"Drinks" },
-    { id: crypto.randomUUID(), barcode:"1234567890123", name:"Chips - Classic",    priceSold:2.49, vendorCost:0.65, startingInventory:40, category:"Snacks" },
-    { id: crypto.randomUUID(), barcode:"2345678901234", name:"Chocolate Bar",      priceSold:2.99, vendorCost:0.85, startingInventory:35, category:"Snacks" }
-  ]);
-  let sales = loadJSON(LS_SALES, []);
-  let history = loadJSON(LS_HIST, {}); // { 'YYYY-MM-DD': [{barcode, qty, revenue, ts}], ... }
-  let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
+/*** DOM refs ***/
+const frontView=document.getElementById("frontView"),adminView=document.getElementById("adminView");
+const frontBtn=document.getElementById("frontBtn"),adminBtn=document.getElementById("adminBtn");
+const scanInput=document.getElementById("scanInput"),frontTbody=document.querySelector("#frontTable tbody");
+const adminTbody=document.querySelector("#adminTable tbody"),revChart=document.getElementById("revChart");
+const toast=document.getElementById("toast"),cstClock=document.getElementById("cstClock");
 
-  // Shift-day rollover: at load, if shift key changed, clear "today" counters locally (history keeps records)
-  (function(){
-    const key = shiftKeyCST(nowCST());
-    const last = localStorage.getItem(LS_SHIFT_KEY);
-    if(last && last !== key){
-      // snapshot previous day into history before clearing
-      snapshotShiftToHistory(last);
-      // clear local "today" list
-      sales = [];
-      saveJSON(LS_SALES, sales);
-    }
-    localStorage.setItem(LS_SHIFT_KEY, key);
-  })();
+/*** Toast + Clock ***/
+function showToast(msg){toast.textContent=msg;toast.style.display="block";setTimeout(()=>toast.style.display="none",1200)}
+function tickClock(){cstClock.textContent=nowCST().toLocaleTimeString("en-US",{hour12:false});}
+setInterval(tickClock,1000);tickClock();
 
-  /******** DOM refs ********/
-  const frontBtn = document.getElementById('frontBtn');
-  const adminBtn = document.getElementById('adminBtn');
-  const frontView = document.getElementById('frontView');
-  const adminView = document.getElementById('adminView');
-
-  const cstClock = document.getElementById('cstClock');
-
-  const scanInput = document.getElementById('scanInput');
-  const filterInput = document.getElementById('filterInput');
-  const lastScan = document.getElementById('lastScan');
-  const frontTbody = document.querySelector('#frontTable tbody');
-  const logTbody = document.querySelector('#logTable tbody');
-  const unitsSoldEl = document.getElementById('unitsSold');
-  const revenueTodayEl = document.getElementById('revenueToday');
-  const focusBanner = document.getElementById('focusBanner');
-  const scanStrip = document.getElementById('scanStrip');
-
-  const adminFilter = document.getElementById('adminFilter');
-  const adminTbody = document.querySelector('#adminTable tbody');
-  const stkRow = document.getElementById('stkRow');
-
-  const hotelBadge = document.getElementById('hotelBadge');
-
-  const setupOpen = document.getElementById('setupOpen');
-  const setupModal = document.getElementById('setupModal');
-  const hotelInput = document.getElementById('hotelInput');
-  const gasInput = document.getElementById('gasInput');
-  const setupMsg = document.getElementById('setupMsg');
-  const saveSetup = document.getElementById('saveSetup');
-  const testPing = document.getElementById('testPing');
-  const closeSetup = document.getElementById('closeSetup');
-
-  const passModal = document.getElementById('passModal');
-  const passField = document.getElementById('passField');
-  const passErr = document.getElementById('passErr');
-  const passCancel = document.getElementById('passCancel');
-  const passOk = document.getElementById('passOk');
-
-  const addProduct = document.getElementById('addProduct');
-  const exportCSV = document.getElementById('exportCSV');
-  const importCSV = document.getElementById('importCSV');
-  const clearToday = document.getElementById('clearToday');
-  const syncCatalog = document.getElementById('syncCatalog');
-
-  const undoOpen = document.getElementById('undoOpen');
-  const undoModal = document.getElementById('undoModal');
-  const undoBody  = document.getElementById('undoBody');
-  const undoCancel= document.getElementById('undoCancel');
-  const undoConfirm= document.getElementById('undoConfirm');
-
-  // Scan Session modal
-  const sessionModal = document.getElementById('sessionModal');
-  const sessionBody  = document.getElementById('sessionBody');
-  const sessionHint  = document.getElementById('sessionHint');
-  const sessionCancel= document.getElementById('sessionCancel');
-  const sessionPost  = document.getElementById('sessionPost');
-
-  /******** Setup helpers ********/
-  const getHotelName = ()=> localStorage.getItem(LS_HOTEL) || "Your Hotel Name";
-  const setHotelName = n => localStorage.setItem(LS_HOTEL, n);
-  const getGAS = ()=> localStorage.getItem(LS_GAS) || "";
-  const setGAS = u => localStorage.setItem(LS_GAS, u);
-  function refreshBadges(){ hotelBadge.textContent = getHotelName(); }
-
-  /******** Networking (send-first, queue-on-fail) ********/
-  const loadQueue = ()=>loadJSON(LS_QUEUE,[]);
-  const saveQueue = q=>saveJSON(LS_QUEUE,q);
-  async function sendToGAS(evt){
-    const url = getGAS(); if(!url) return true;
-    try{ await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(evt), mode:"no-cors" }); return true; }
-    catch(e){ return false; }
-  }
-  async function postBatch(entries){
-    const url = getGAS(); if(!url) return true;
-    try{
-      await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ type:"batch", payload: entries }), mode:"no-cors" });
-      return true;
-    }catch(e){ return false; }
-  }
-  async function flushQueue(){
-    const url=getGAS(); if(!url) return;
-    const q=loadQueue(); if(!q.length) return;
-    const still=[];
-    for(const evt of q){
-      const ok = evt?.type==="batch" ? await postBatch(evt.payload) : await sendToGAS(evt);
-      if(!ok) still.push(evt);
-    }
-    saveQueue(still);
-  }
-  window.addEventListener('online', flushQueue);
-
-  /******** History & Day Log ********/
-  function snapshotShiftToHistory(shiftKey){
-    if(!shiftKey) return;
-    const items = sales; // sales from the previous key already persisted
-    if(!items.length) return;
-    // Aggregate
-    const agg = new Map();
-    for(const s of items){
-      const bc = s.barcode; const qty = s.qty||0;
-      const prod = inventory.find(p=>p.barcode===bc);
-      const price = prod?.priceSold || 0;
-      const rec = agg.get(bc) || { barcode:bc, name:prod?.name||'(Unknown)', qty:0, revenue:0 };
-      rec.qty += qty; rec.revenue += price * qty;
-      agg.set(bc, rec);
-    }
-    const arr = Array.from(agg.values());
-    history[shiftKey] = arr;
-    saveJSON(LS_HIST, history);
-  }
-
-  function dayTotalsFromHistory(){
-    const out = [];
-    for(const d in history){
-      const rows = history[d] || [];
-      let units=0, rev=0;
-      rows.forEach(r=>{ units += r.qty||0; rev += r.revenue||0; });
-      out.push({ day:d, units, rev, rows });
-    }
-    out.sort((a,b)=> a.day < b.day ? 1 : -1);
-    return out;
-  }
-
-  function renderDayLog(){
-    const wrap = document.getElementById('dayLog');
-    wrap.innerHTML = '';
-    const days = dayTotalsFromHistory();
-    if(!days.length){
-      wrap.innerHTML = `<div class="small">No historical shift-days yet. (This will populate automatically after your first 7 AM.)</div>`;
-      return;
-    }
-    for(const d of days){
-      const item = document.createElement('div');
-      item.className = 'accordion-item';
-      const head = document.createElement('div');
-      head.className = 'accordion-head';
-      head.innerHTML = `<div><b>${d.day}</b> — <span class="small">Units: ${d.units} • Revenue: ${currency(d.rev)}</span></div><div>▼</div>`;
-      const body = document.createElement('div');
-      body.className = 'accordion-body';
-      // table
-      let html = `<div style="overflow:auto"><table><thead><tr><th>Product</th><th>Barcode</th><th class="right">Qty</th><th class="right">Revenue</th></tr></thead><tbody>`;
-      d.rows.forEach(r=>{
-        html += `<tr><td>${escapeHtml(r.name)}</td><td><span class="pill">${escapeHtml(r.barcode)}</span></td><td class="right">${r.qty}</td><td class="right">${currency(r.revenue)}</td></tr>`;
-      });
-      html += `</tbody></table></div>`;
-      body.innerHTML = html;
-      head.addEventListener('click', ()=>{
-        body.style.display = body.style.display==='block' ? 'none' : 'block';
-      });
-      item.appendChild(head); item.appendChild(body); wrap.appendChild(item);
-    }
-  }
-
-  /******** Aggregations ********/
-  function todaysAggregate(){
-    const key = localStorage.getItem(LS_SHIFT_KEY) || shiftKeyCST();
-    const byItem = new Map();
-    for(const s of sales){
-      const sKey = s.ld || shiftKeyCST(s.ts);
-      if(sKey !== key) continue;
-      const bc = s.barcode;
-      const prod = inventory.find(p=>p.barcode===bc);
-      const name = prod?.name || '(Unknown)';
-      const price = prod?.priceSold || 0;
-      const rec = byItem.get(bc) || { name, price, sold:0, revenue:0, lastTs:null, barcode: bc };
-      rec.sold += (s.qty||0);
-      rec.revenue += (price*(s.qty||0));
-      if(!rec.lastTs || new Date(s.ts) > new Date(rec.lastTs)) rec.lastTs = s.ts;
-      byItem.set(bc, rec);
-    }
-    return Array.from(byItem.values());
-  }
-  function todaySalesMap(){ const m=new Map(); todaysAggregate().forEach(r=> m.set(r.barcode, r.sold)); return m; }
-
-  /******** Toast + sounds ********/
-  const toastEl = document.getElementById('toast');
-  function showToast(msg, kind='ok', ms=1200){ toastEl.textContent = msg; toastEl.className = `toast ${kind}`; toastEl.style.display = 'block'; setTimeout(()=> toastEl.style.display='none', ms); }
-  function beepOk(){ tone(880, 80); }
-  function beepErr(){ tone(220, 160); }
-  function tone(freq, dur){ try{ const ctx = new (window.AudioContext||window.webkitAudioContext)(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.type='sine'; o.frequency.value=freq; o.connect(g); g.connect(ctx.destination); g.gain.setValueAtTime(0.001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime+0.01); o.start(); setTimeout(()=>{ g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.02); o.stop(ctx.currentTime+0.03); ctx.close(); }, dur);}catch{} }
-
-  /******** Renderers ********/
-  function renderScanLog(){
-    const rows = todaysAggregate().sort((a,b)=> b.sold - a.sold || (new Date(b.lastTs)-new Date(a.lastTs)));
-    logTbody.innerHTML="";
-    if(!rows.length){ const tr=document.createElement('tr'); tr.innerHTML = `<td colspan="5" class="small">No scans yet today.</td>`; logTbody.appendChild(tr); return; }
-    for(const r of rows){
-      const tr=document.createElement('tr');
-      tr.innerHTML = `
-        <td>${escapeHtml(r.name)}</td>
-        <td><span class="pill">${escapeHtml(r.barcode||'')}</span></td>
-        <td class="right">${r.sold}</td>
-        <td class="right">${currency(r.revenue)}</td>
-        <td class="right">${r.lastTs? new Date(r.lastTs).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit', second:'2-digit'}) : '-'}</td>
-      `;
-      logTbody.appendChild(tr);
-    }
-  }
-  function renderFront(){
-    const query = (filterInput.value||"").trim().toLowerCase();
-    const map = todaySalesMap();
-    const items = inventory.map(p=>{
-      const sold = map.get(p.barcode)||0;
-      const end = Math.max(0,(p.startingInventory||0)-sold);
-      const rev = (p.priceSold||0)*sold;
-      return { p, sold, end, rev };
-    }).filter(row=>{
-      if(!query) return true;
-      return row.p.name.toLowerCase().includes(query) || (row.p.barcode||"").toLowerCase().includes(query);
-    }).sort((a,b)=> b.sold - a.sold);
-
-    frontTbody.innerHTML = "";
-    let totalUnits=0, totalRev=0;
-    for(const row of items){
-      const {p, sold, end, rev} = row;
-      totalUnits += sold; totalRev += rev;
-      const tr=document.createElement('tr');
-      tr.innerHTML = `
-        <td><div style="display:flex;align-items:center;gap:8px"><div style="font-weight:700">${escapeHtml(p.name)}</div><span class="pill">${escapeHtml(p.barcode||"no barcode")}</span></div></td>
-        <td class="right">${currency(p.priceSold)}</td>
-        <td class="right">${p.startingInventory||0}</td>
-        <td class="right">${sold}</td>
-        <td class="right">${end}</td>
-        <td class="right">${currency(rev)}</td>
-      `;
-      frontTbody.appendChild(tr);
-    }
-    unitsSoldEl.textContent = String(totalUnits);
-    revenueTodayEl.textContent = currency(totalRev);
-  }
-  function renderAdminTable(){
-    const q=(adminFilter.value||"").trim().toLowerCase();
-    const map = todaySalesMap();
-    adminTbody.innerHTML = "";
-    for(const p of inventory){
-      if(q && !(p.name.toLowerCase().includes(q) || (p.barcode||"").toLowerCase().includes(q) || (p.category||"").toLowerCase().includes(q))) continue;
-      const sold = map.get(p.barcode)||0;
-      const end = Math.max(0,(p.startingInventory||0)-sold);
-      const rev = (p.priceSold||0)*sold;
-      const endCost = (p.vendorCost||0)*end;
-      const tr=document.createElement('tr');
-      tr.innerHTML = `
-        <td><input class="input" value="${escapeHtml(p.name)}" data-f="name" /></td>
-        <td><input class="input" value="${escapeHtml(p.barcode||"")}" data-f="barcode" /></td>
-        <td><input class="input" value="${escapeHtml(p.category||"")}" data-f="category" /></td>
-        <td class="right"><input class="input" type="number" step="0.01" value="${Number(p.priceSold)||0}" data-f="priceSold" /></td>
-        <td class="right"><input class="input" type="number" step="0.01" value="${Number(p.vendorCost)||0}" data-f="vendorCost" /></td>
-        <td class="right"><input class="input" type="number" value="${Number(p.startingInventory)||0}" data-f="startingInventory" /></td>
-        <td class="right">${sold}</td>
-        <td class="right">${end}</td>
-        <td class="right">${currency(rev)}</td>
-        <td class="right">${currency(endCost)}</td>
-        <td class="right"><button class="btn" data-act="del">Delete</button></td>
-      `;
-      tr.querySelectorAll('input').forEach(inp=>{
-        inp.addEventListener('change', ()=>{
-          const f=inp.getAttribute('data-f');
-          let val=inp.value;
-          if(f==='priceSold'||f==='vendorCost') val=parseFloat(val)||0;
-          if(f==='startingInventory') val=parseInt(val)||0;
-          p[f]=val; saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdminAll();
-        });
-      });
-      tr.querySelector('[data-act="del"]').addEventListener('click', ()=>{
-        if(!confirm('Remove this product?')) return;
-        inventory=inventory.filter(x=>x.id!==p.id);
-        saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdminAll();
-      });
-      adminTbody.appendChild(tr);
-    }
-  }
-
-  /******** Robinhood-like cards & sparklines ********/
-  function last7SeriesFor(barcode){
-    // build array of last 7 shift-days quantities
-    const days = Object.keys(history).sort(); // ascending
-    const last7 = days.slice(-7);
-    const out = [];
-    for(const d of last7){
-      const recs = history[d] || [];
-      const found = recs.find(r=> r.barcode===barcode);
-      out.push(found ? found.qty : 0);
-    }
-    return out.length ? out : [0];
-  }
-  function drawSpark(canvas, series){
-    const ctx = canvas.getContext('2d');
-    const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0,0,w,h);
-    const min = Math.min(...series), max = Math.max(...series);
-    const span = Math.max(1, max - min);
-    const step = w / (series.length - 1 || 1);
-    ctx.lineWidth = 2;
-    const up = series[series.length-1] >= series[0];
-    ctx.strokeStyle = up ? getComputedStyle(document.documentElement).getPropertyValue('--ok') : getComputedStyle(document.documentElement).getPropertyValue('--err');
-    ctx.beginPath();
-    series.forEach((v,i)=>{
-      const x = i*step;
-      const y = h - ((v - min) / span) * (h-4) - 2;
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    });
-    ctx.stroke();
-  }
-  function renderStocks(){
-    stkRow.innerHTML = '';
-    const map = todaySalesMap();
-    const cards = inventory.map(p=>{
-      const qty = map.get(p.barcode)||0;
-      const series = last7SeriesFor(p.barcode);
-      const up = series.length>1 ? (series[series.length-1] - series[0]) >= 0 : qty>0;
-      const div = document.createElement('div');
-      div.className = `stk ${up?'up':'down'}`;
-      div.innerHTML = `
-        <div>
-          <div class="name">${escapeHtml(p.name)}</div>
-          <div class="small">${escapeHtml(p.category||'')} • <span class="${up?'tag-up':'tag-down'}">${up?'+':'-'} trend</span></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <canvas class="spark" width="120" height="32"></canvas>
-          <div class="price">${currency(p.priceSold)}</div>
-        </div>
-      `;
-      const canvas = div.querySelector('canvas');
-      drawSpark(canvas, series);
-      return div;
-    });
-    cards.forEach(c=> stkRow.appendChild(c));
-  }
-
-  /******** Filters ********/
-  filterInput.addEventListener('input', ()=>{ renderFront(); renderScanLog(); });
-  adminFilter.addEventListener('input', renderAdminTable);
-
-  /******** Catalog mgmt ********/
-  addProduct.addEventListener('click', ()=>{
-    inventory.push({ id:crypto.randomUUID(), barcode:"", name:"New Product", priceSold:0, vendorCost:0, startingInventory:0, category:"" });
-    saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdminAll();
+/*** renderers ***/
+function renderFront(){
+  const map=new Map();sales.forEach(s=>{map.set(s.barcode,(map.get(s.barcode)||0)+s.qty)});
+  frontTbody.innerHTML="";
+  inventory.forEach(p=>{
+    const sold=map.get(p.barcode)||0;const end=Math.max(0,p.startingInventory-sold);
+    const rev=(p.priceSold||0)*sold;
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${escapeHtml(p.name)}</td><td class="right">${currency(p.priceSold)}</td>
+    <td class="right">${p.startingInventory}</td><td class="right">${sold}</td>
+    <td class="right">${end}</td><td class="right">${currency(rev)}</td>`;
+    frontTbody.appendChild(tr);
   });
-  exportCSV.addEventListener('click', ()=>{
-    const headers=["barcode","name","priceSold","vendorCost","startingInventory","category"];
-    const body=inventory.map(p=>[p.barcode,p.name,p.priceSold,p.vendorCost,p.startingInventory,p.category||""].map(x=>String(x).replaceAll(",","")).join(",")).join("\n");
-    const csv=headers.join(",")+"\n"+body;
-    const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; a.download=`inventory_${shiftKeyCST(nowCST())}.csv`; a.click(); URL.revokeObjectURL(url);
+}
+function renderAdmin(){
+  adminTbody.innerHTML="";
+  inventory.forEach(p=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.barcode)}</td>
+    <td class="right">${currency(p.priceSold)}</td><td class="right">${currency(p.vendorCost)}</td>
+    <td class="right">${p.startingInventory}</td>`;
+    adminTbody.appendChild(tr);
   });
-  importCSV.addEventListener('change', (ev)=>{
-    const f=ev.target.files?.[0]; if(!f) return;
-    const r=new FileReader(); r.onload=()=>{
-      const text=String(r.result||""); const rows=text.split(/\r?\n/).filter(Boolean); if(!rows.length) return;
-      const headers=rows[0].split(",").map(h=>h.trim()); const idx=k=>headers.indexOf(k);
-      const out=[];
-      for(let i=1;i<rows.length;i++){
-        const cols=rows[i].split(",");
-        out.push({ id: crypto.randomUUID(), barcode: cols[idx("barcode")]?.trim() || "", name: cols[idx("name")]?.trim() || "",
-          priceSold: parseFloat(cols[idx("priceSold")]) || 0, vendorCost: parseFloat(cols[idx("vendorCost")]) || 0,
-          startingInventory: parseInt(cols[idx("startingInventory")]) || 0, category: cols[idx("category")]?.trim() || "" });
-      }
-      if(out.length){ inventory=out; saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdminAll(); }
-      ev.target.value="";
-    };
-    r.readAsText(f);
+}
+
+/*** Trend Chart ***/
+function renderTrend(){
+  const ctx=revChart.getContext("2d");ctx.clearRect(0,0,revChart.width,revChart.height);
+  const daily={};sales.forEach(s=>{
+    const day=shiftKeyCST(new Date(s.ts));
+    daily[day]=(daily[day]||0)+ (s.qty*(inventory.find(p=>p.barcode==s.barcode)?.priceSold||0));
   });
-  clearToday.addEventListener('click', ()=>{
-    if(!confirm("Clear current shift-day sales (does not touch inventory)?")) return;
-    const key=localStorage.getItem(LS_SHIFT_KEY) || shiftKeyCST();
-    // snapshot to history before clearing
-    snapshotShiftToHistory(key);
-    sales=[]; saveJSON(LS_SALES,sales);
-    renderFront(); renderScanLog(); renderAdminAll(); renderDayLog();
-  });
-  syncCatalog.addEventListener('click', async ()=>{
-    const url=getGAS(); if(!url){ alert("Add Apps Script URL in Setup first."); return; }
-    const payload=inventory.map(p=>({ barcode:p.barcode||"", name:p.name||"", priceSold:p.priceSold||0, vendorCost:p.vendorCost||0, startingInventory:p.startingInventory||0 }));
-    await fetch(url,{ method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({type:"catalog", payload}), mode:"no-cors" });
-    alert("Catalog sync sent. Check the 'Catalog' tab.");
-  });
+  const days=Object.keys(daily).sort();
+  if(!days.length){ctx.fillText("No data",10,20);return}
+  const vals=days.map(d=>daily[d]);const max=Math.max(...vals,1);
+  ctx.strokeStyle="#28a745";ctx.beginPath();
+  days.forEach((d,i)=>{const x=60+i*60;const y=230-(vals[i]/max)*200;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  ctx.stroke();
+  ctx.fillStyle="#000";ctx.font="12px Arial";
+  days.forEach((d,i)=>ctx.fillText(d.slice(5),55+i*60,245));
+  ctx.fillText("Revenue Trend",10,15);
+}
 
-  /******** Tabs + admin auth ********/
-  frontBtn.addEventListener('click', ()=>{ frontBtn.classList.add('primary'); adminBtn.classList.remove('primary'); frontView.style.display="block"; adminView.style.display="none"; });
-  adminBtn.addEventListener('click', ()=>{ passErr.textContent=""; passField.value=""; passModal.style.display="grid"; });
-  passCancel.addEventListener('click', ()=> passModal.style.display="none");
-  passOk.addEventListener('click', ()=>{
-    if(passField.value===adminPass){
-      passModal.style.display="none";
-      frontBtn.classList.remove('primary'); adminBtn.classList.add('primary');
-      frontView.style.display="none"; adminView.style.display="block";
-      renderAdminAll();
-    } else { passErr.textContent="Incorrect password"; }
-  });
-  document.getElementById('changePass').addEventListener('click', ()=>{
-    const cur=prompt("Current password:"); if(cur!==adminPass) return alert("Incorrect.");
-    const next=prompt("New password:"); if(!next) return;
-    adminPass=next; localStorage.setItem(LS_ADMIN_PASS, adminPass); alert("Password updated.");
-  });
+/*** Scanning ***/
+let buffer="",bufTimer=null;
+document.addEventListener("keydown",e=>{
+  if(adminView.style.display==="block")return;
+  if(e.key==="Enter"){const code=buffer.trim();buffer="";
+    if(code){registerScan(code)};return;}
+  if(e.key.length===1){buffer+=e.key;clearTimeout(bufTimer);bufTimer=setTimeout(()=>buffer="",100);}
+});
+scanInput.addEventListener("click",()=>showToast("Ready to scan..."));
+function registerScan(code){
+  const prod=inventory.find(p=>String(p.barcode).trim()==String(code).trim());
+  if(!prod){showToast("Unknown barcode: "+code);return;}
+  const now=new Date();
+  sales.push({id:crypto.randomUUID(),barcode:code,qty:1,ts:now.toISOString()});
+  saveJSON(LS_SALES,sales);
+  renderFront();renderTrend();
+  document.getElementById("lastScan").textContent=`Scanned: ${prod.name}`;
+}
 
-  /******** Setup modal ********/
-  setupOpen.addEventListener('click', ()=>{
-    hotelInput.value=getHotelName(); gasInput.value=getGAS(); setupMsg.textContent=""; setupModal.style.display="grid";
-  });
-  closeSetup.addEventListener('click', ()=>setupModal.style.display="none");
-  saveSetup.addEventListener('click', ()=>{ setHotelName(hotelInput.value.trim()||"Your Hotel Name"); setGAS(gasInput.value.trim()); refreshBadges(); setupMsg.textContent="Saved!"; });
-  testPing.addEventListener('click', async ()=>{
-    const url=getGAS(); if(!url){ setupMsg.textContent="Paste your Web App URL first."; return; }
-    setupMsg.textContent="Sending test ping…";
-    const ok = await sendToGAS({ type:"sale", payload:{ id: crypto.randomUUID(), ts:new Date().toISOString(), hotel:getHotelName(), barcode:"TEST", name:"Ping", priceSold:0, qty:0, revenue:0 }});
-    setupMsg.textContent = ok ? "Ping sent (check Sales tab)" : "Ping failed (check deployment/permissions).";
-  });
+/*** Tabs ***/
+frontBtn.onclick=()=>{frontView.style.display="block";adminView.style.display="none";}
+adminBtn.onclick=()=>{frontView.style.display="none";adminView.style.display="block";renderAdmin();renderTrend();}
 
-  /************ Scanner activation rules ************/
-  // Scanner ONLY works inside Scan Session modal.
-  const SCAN_DEBOUNCE_MS = 250;
-  const recentScanTimes = new Map(); // barcode -> lastTimeMs
-  function shouldAcceptScan(code){
-    const now = Date.now();
-    const last = recentScanTimes.get(code) || 0;
-    if (now - last < SCAN_DEBOUNCE_MS) return false;
-    recentScanTimes.set(code, now);
-    return true;
-  }
+/*** Export CSV ***/
+document.getElementById("exportCSV").onclick=()=>{
+  const headers=["barcode","name","priceSold","vendorCost","startingInventory"];
+  const body=inventory.map(p=>[p.barcode,p.name,p.priceSold,p.vendorCost,p.startingInventory].join(",")).join("\n");
+  const blob=new Blob([headers.join(",")+"\n"+body],{type:"text/csv"});const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");a.href=url;a.download="inventory.csv";a.click();URL.revokeObjectURL(url);
+}
 
-  let buffer = '';
-  let bufTimer = null;
-  const INTERVAL = 50; // ms gap
+/*** Test email button ***/
+document.getElementById("testEmail").onclick=()=>{
+  const url=localStorage.getItem(LS_GAS)||prompt("Enter your Apps Script web app URL:");
+  if(!url)return;fetch(url+"?ping=1").then(()=>alert("Now open Apps Script and run emailYesterdayAndRoll() manually to test email."));
+}
 
-  document.addEventListener('keydown', (e)=>{
-    const inSession = sessionModal.style.display === 'grid';
-    if(!inSession) return; // ignore keys unless session is open
-    if(e.key==='Enter' || e.key==='NumpadEnter'){
-      const code = buffer.trim(); buffer = '';
-      if(code){ sessionScan(code); }
-      e.preventDefault();
-      return;
-    }
-    if(e.key.length===1){
-      buffer += e.key;
-      clearTimeout(bufTimer);
-      bufTimer = setTimeout(()=>{ buffer=''; }, INTERVAL);
-    }
-  });
-
-  function nudgeFocusBanner(){
-    focusBanner.style.display = 'block';
-    setTimeout(()=> focusBanner.style.display='none', 1500);
-  }
-
-  /******** Scan Session ONLY ********/
-  let sessionMap = new Map(); // barcode -> qty
-  function openSession(){
-    sessionMap = new Map();
-    sessionHint.textContent = 'Waiting for first scan…';
-    sessionBody.innerHTML = '';
-    sessionModal.style.display = 'grid';
-  }
-  function closeSession(){ sessionModal.style.display = 'none'; }
-
-  function sessionScan(code){
-    const prod=inventory.find(p=>p.barcode===code);
-    if(!prod){ addChip(`Unknown ${code}`, 'err'); beepErr(); showToast('Unknown barcode', 'err'); return; }
-    if(!shouldAcceptScan(code)) return;
-    const cur = sessionMap.get(code) || 0;
-    sessionMap.set(code, cur+1);
-    sessionHint.textContent = 'Scanning…';
-    renderSessionTable();
-    beepOk(); lastScan.textContent = `Scanned: ${prod.name} (${code})`;
-  }
-  function renderSessionTable(){
-    sessionBody.innerHTML = '';
-    let total=0, rev=0;
-    for(const [bc, qty] of sessionMap.entries()){
-      const p = inventory.find(x=>x.barcode===bc);
-      const r = (p?.priceSold||0)*qty;
-      total += qty; rev += r;
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td style="padding:6px 8px;">${escapeHtml(p?.name||'(Unknown)')}</td>
-        <td><span class="pill">${escapeHtml(bc)}</span></td>
-        <td class="right" style="padding:6px 8px;">${qty}</td>
-        <td class="right" style="padding:6px 8px;">${currency(r)}</td>`;
-      sessionBody.appendChild(tr);
-    }
-    if(sessionMap.size===0){
-      const tr=document.createElement('tr');
-      tr.innerHTML = `<td colspan="4" class="small" style="padding:6px 8px;">No items yet.</td>`;
-      sessionBody.appendChild(tr);
-    }else{
-      const tr=document.createElement('tr');
-      tr.innerHTML = `<td colspan="2" style="padding:6px 8px; text-align:right;"><b>Totals</b></td>
-        <td class="right" style="padding:6px 8px;"><b>${total}</b></td>
-        <td class="right" style="padding:6px 8px;"><b>${currency(rev)}</b></td>`;
-      sessionBody.appendChild(tr);
-    }
-  }
-  sessionCancel.addEventListener('click', ()=> closeSession());
-  sessionPost.addEventListener('click', async ()=>{
-    if (sessionMap.size === 0) { closeSession(); return; }
-
-    // Build single batched payload
-    const now = new Date(); const ts = now.toISOString(); const hotel = getHotelName();
-    const entries = [];
-    for (const [bc, qty] of sessionMap.entries()){
-      const p = inventory.find(x=>x.barcode===bc); if(!p) continue;
-      const ld = shiftKeyCST(now);
-      entries.push({ id: crypto.randomUUID(), ts, hotel, barcode: bc, name: p.name, priceSold: p.priceSold||0, qty, revenue: (p.priceSold||0)*qty, ld });
-    }
-
-    // Optimistic UI: local update first
-    for (const e of entries) sales.push({ id:e.id, barcode:e.barcode, qty:e.qty, ts:e.ts, ld:e.ld });
-    saveJSON(LS_SALES, sales);
-    renderFront(); renderScanLog(); renderAdminAll();
-    closeSession(); showToast('Session posted', 'ok');
-
-    // Network (one call)
-    const ok = await postBatch(entries);
-    if(!ok){ const q=loadQueue(); q.push({type:"batch", payload:entries}); saveQueue(q); } else { flushQueue(); }
-  });
-
-  // Open session on input click
-  scanInput.addEventListener('click', ()=>{ openSession(); nudgeFocusBanner(); });
-
-  function addChip(txt, kind='ok'){
-    const span=document.createElement('span'); span.className = `chip ${kind==='err'?'err':'ok'}`; span.textContent = txt; scanStrip.prepend(span);
-    const max=12; while(scanStrip.children.length>max){ scanStrip.removeChild(scanStrip.lastChild); }
-  }
-
-  /******** Undo Picker ********/
-  undoOpen.addEventListener('click', ()=>{
-    buildUndoTable();
-    undoModal.style.display = 'grid';
-  });
-  undoCancel.addEventListener('click', ()=> undoModal.style.display='none');
-  undoConfirm.addEventListener('click', async ()=>{
-    const sel = document.querySelector('input[name="undoPick"]:checked');
-    if(!sel){ alert('Pick one item to remove.'); return; }
-    const id = sel.value;
-    const item = sales.find(s=>s.id===id);
-    if(!item){ alert('Item not found.'); return; }
-
-    // Remove locally
-    sales = sales.filter(s=>s.id!==id);
-    saveJSON(LS_SALES, sales);
-    renderFront(); renderScanLog(); renderAdminAll();
-    showToast('Removed selected item', 'ok');
-    undoModal.style.display='none';
-
-    // Notify GAS (best-effort)
-    const ok = await sendToGAS({ type:"undo", payload:{ id:item.id, barcode:item.barcode, ts:item.ts }});
-    if(!ok){ const q=loadQueue(); q.push({ type:"undo", payload:{ id:item.id, barcode:item.barcode, ts:item.ts }}); saveQueue(q); } else { flushQueue(); }
-  });
-
-  function buildUndoTable(){
-    const key = localStorage.getItem(LS_SHIFT_KEY) || shiftKeyCST();
-    const todayItems = sales.filter(s=> (s.ld || shiftKeyCST(s.ts)) === key)
-                            .sort((a,b)=> new Date(b.ts)-new Date(a.ts));
-    undoBody.innerHTML = '';
-    if(!todayItems.length){
-      const tr=document.createElement('tr'); tr.innerHTML = `<td colspan="5" class="small" style="padding:6px 8px;">No posted items this shift-day.</td>`;
-      undoBody.appendChild(tr); return;
-    }
-    for(const s of todayItems){
-      const p = inventory.find(x=>x.barcode===s.barcode);
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><input type="radio" name="undoPick" value="${escapeHtml(s.id)}" /></td>
-        <td>${new Date(s.ts).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit', second:'2-digit'})}</td>
-        <td>${escapeHtml(p?.name||'(Unknown)')}</td>
-        <td><span class="pill">${escapeHtml(s.barcode||'')}</span></td>
-        <td class="right">${s.qty||0}</td>
-      `;
-      undoBody.appendChild(tr);
-    }
-  }
-
-  /******** Clock + Admin composites ********/
-  function renderStocksAndDayLog(){ renderStocks(); renderDayLog(); }
-  function renderAdminAll(){ renderStocksAndDayLog(); renderAdminTable(); }
-
-  /******** Init ********/
-  function tickCST(){ cstClock.textContent = fmtCST(new Date()); }
-  function init(){ refreshBadges(); renderFront(); renderScanLog(); renderAdminAll(); flushQueue(); tickCST(); setInterval(tickCST, 1000); }
-  init();
+/*** init ***/
+renderFront();renderAdmin();renderTrend();
 </script>
 </body>
 </html>
