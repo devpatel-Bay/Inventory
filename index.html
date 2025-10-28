@@ -39,9 +39,8 @@
   .chip.ok { border-color:#bbf7d0; background:#f0fdf4; }
   .chip.err { border-color:#fecaca; background:#fef2f2; }
   .banner { background:#fff7ed; border:1px solid #fed7aa; color:#7c2d12; padding:8px 12px; border-radius:12px; margin-top:8px; display:none; }
-  .pill-kbd { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; border:1px solid var(--border); padding:1px 6px; border-radius:6px; background:#fff; }
 
-  /* Mobile-friendly tweaks only */
+  /* Mobile-friendly tweaks */
   @media (max-width: 640px) {
     .container { padding: 12px; }
     h1 { font-size: 18px; }
@@ -71,8 +70,8 @@
     </header>
 
     <div class="row" style="align-items:center; justify-content:space-between; margin-top:8px;">
-      <div class="small">Hotel: <b id="hotelBadge">Your Hotel Name</b></div>
-      <button id="setupOpen" class="btn">Setup</button>
+      <div class="small">Hotel: <b id="hotelBadge">—</b></div>
+      <!-- Setup removed from front desk view -->
     </div>
 
     <div id="focusBanner" class="banner">Scanner is inactive until you open a Scan Session. Click the input below to start.</div>
@@ -171,7 +170,28 @@
         </div>
       </div>
 
-      <div class="row" style="margin-bottom:8px">
+      <!-- Settings moved here -->
+      <div class="card" style="margin-top:12px;">
+        <div class="card-title">
+          <h3 style="margin:0; font-size:16px; font-weight:600">Settings</h3>
+          <span class="small">Defaults are hard-coded; you can override below (per device).</span>
+        </div>
+        <div class="row" style="align-items:center; margin-bottom:8px">
+          <label style="width:160px" class="small">Hotel name</label>
+          <input id="hotelInput" class="input grow" />
+        </div>
+        <div class="row" style="align-items:center">
+          <label style="width:160px" class="small">Apps Script URL</label>
+          <input id="gasInput" class="input grow" placeholder="https://script.google.com/macros/s/.../exec" />
+        </div>
+        <div id="setupMsg" class="small" style="margin-top:8px"></div>
+        <div class="row" style="justify-content:flex-end; margin-top:12px">
+          <button id="saveSetup" class="btn">Save</button>
+          <button id="testPing" class="btn">Test Ping</button>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
         <input id="adminFilter" class="input grow" placeholder="Filter by name, barcode, or category" />
       </div>
 
@@ -198,27 +218,6 @@
     </section>
   </div>
 
-  <!-- Setup Modal -->
-  <div id="setupModal" class="modal-backdrop">
-    <div class="modal">
-      <h3 style="margin-top:0">Setup</h3>
-      <div class="row" style="align-items:center; margin-bottom:8px">
-        <label style="width:120px">Hotel name</label>
-        <input id="hotelInput" class="input grow" />
-      </div>
-      <div class="row" style="align-items:center">
-        <label style="width:120px">Apps Script URL</label>
-        <input id="gasInput" class="input grow" placeholder="https://script.google.com/macros/s/.../exec" />
-      </div>
-      <div id="setupMsg" class="small" style="margin-top:8px"></div>
-      <div class="row" style="justify-content:flex-end; margin-top:12px">
-        <button id="saveSetup" class="btn">Save URL</button>
-        <button id="testPing" class="btn">Send test ping</button>
-        <button id="closeSetup" class="btn primary">Close</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Admin Password Modal -->
   <div id="passModal" class="modal-backdrop">
     <div class="modal">
@@ -241,7 +240,7 @@
       <div style="max-height:260px; overflow:auto; border:1px solid var(--border); border-radius:12px;">
         <table style="width:100%; border-collapse:collapse;">
           <thead><tr><th style="padding:6px 8px;">Product</th><th>Barcode</th><th class="right" style="padding:6px 8px;">Qty</th><th class="right" style="padding:6px 8px;">Revenue</th></tr></thead>
-        <tbody id="sessionBody"></tbody>
+          <tbody id="sessionBody"></tbody>
         </table>
       </div>
       <div class="row" style="justify-content:flex-end; margin-top:12px">
@@ -280,6 +279,11 @@
   <div id="toast" class="toast"></div>
 
 <script>
+  /*************** REQUIRED: Hard-coded defaults ****************/
+  // TODO: replace both with your live values (these are used automatically on every device)
+  const DEFAULT_HOTEL_NAME = 'Hampton Inn Cable Ranch';
+  const DEFAULT_GAS_URL    = 'https://script.google.com/macros/s/AKfycbwPQGVTtCNZgAhSkrrpnpmQuneSoueJJiixAzMEmoNBPLda9ZgjzRhDlO1oyAp5leTMfw/exec';
+
   /******** Storage keys ********/
   const LS_INV="hotel_inventory_v1", LS_SALES="hotel_sales_v1", LS_ADMIN_PASS="hotel_admin_pass_v1";
   const LS_QUEUE="sales_queue_v1", LS_LAST_DAY="last_open_day_v1", LS_HOTEL="hotel_name_v1", LS_GAS="gas_webapp_url_v1";
@@ -330,6 +334,10 @@
   let sales = loadJSON(LS_SALES, []);
   let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
 
+  // Seed defaults on every device if nothing saved yet
+  if (!localStorage.getItem(LS_HOTEL)) localStorage.setItem(LS_HOTEL, DEFAULT_HOTEL_NAME);
+  if (!localStorage.getItem(LS_GAS))   localStorage.setItem(LS_GAS, DEFAULT_GAS_URL);
+
   (function(){ const t=todayKey(); const last=localStorage.getItem(LS_LAST_DAY); if(last && last!==t){ sales=[]; saveJSON(LS_SALES,sales); } localStorage.setItem(LS_LAST_DAY,t); })();
 
   /******** DOM refs ********/
@@ -355,14 +363,12 @@
 
   const hotelBadge = document.getElementById('hotelBadge');
 
-  const setupOpen = document.getElementById('setupOpen');
-  const setupModal = document.getElementById('setupModal');
+  // Admin settings refs (moved here)
   const hotelInput = document.getElementById('hotelInput');
   const gasInput = document.getElementById('gasInput');
   const setupMsg = document.getElementById('setupMsg');
   const saveSetup = document.getElementById('saveSetup');
   const testPing = document.getElementById('testPing');
-  const closeSetup = document.getElementById('closeSetup');
 
   const passModal = document.getElementById('passModal');
   const passField = document.getElementById('passField');
@@ -376,12 +382,6 @@
   const clearToday = document.getElementById('clearToday');
   const syncCatalog = document.getElementById('syncCatalog');
 
-  const undoOpen = document.getElementById('undoOpen');
-  const undoModal = document.getElementById('undoModal');
-  const undoBody  = document.getElementById('undoBody');
-  const undoCancel= document.getElementById('undoCancel');
-  const undoConfirm= document.getElementById('undoConfirm');
-
   // Scan Session modal
   const sessionModal = document.getElementById('sessionModal');
   const sessionBody  = document.getElementById('sessionBody');
@@ -389,11 +389,11 @@
   const sessionCancel= document.getElementById('sessionCancel');
   const sessionPost  = document.getElementById('sessionPost');
 
-  /******** Setup helpers ********/
-  const getHotelName = ()=> localStorage.getItem(LS_HOTEL) || "Your Hotel Name";
-  const setHotelName = n => localStorage.setItem(LS_HOTEL, n);
-  const getGAS = ()=> localStorage.getItem(LS_GAS) || "";
-  const setGAS = u => localStorage.setItem(LS_GAS, u);
+  /******** Settings helpers (defaults + overrides) ********/
+  const getHotelName = ()=> localStorage.getItem(LS_HOTEL) || DEFAULT_HOTEL_NAME;
+  const setHotelName = n => localStorage.setItem(LS_HOTEL, n || DEFAULT_HOTEL_NAME);
+  const getGAS = ()=> localStorage.getItem(LS_GAS) || DEFAULT_GAS_URL;
+  const setGAS = u => localStorage.setItem(LS_GAS, u || DEFAULT_GAS_URL);
   function refreshBadges(){ hotelBadge.textContent = getHotelName(); }
 
   /******** Networking ********/
@@ -423,12 +423,12 @@
   }
   window.addEventListener('online', flushQueue);
 
-  /******** Pull from server on load (Option 1) ********/
+  /******** Pull from server on load ********/
   async function pullTodayFromServer(){
     const url = getGAS();
     if(!url) return;
     try{
-      const resp = await fetch(url + '?summary=today'); // simple GET, parse JSON
+      const resp = await fetch(url + '?summary=today');
       const data = await resp.json();
       if(!data?.ok) return;
 
@@ -440,14 +440,14 @@
         priceSold: Number(p.priceSold)||0,
         vendorCost: Number(p.vendorCost)||0,
         startingInventory: Number(p.startingInventory)||0,
-        category: '' // optional
+        category: ''
       }));
       if(newInv.length){
         inventory = newInv;
         saveJSON(LS_INV, inventory);
       }
 
-      // Replace today's sales from server raw rows (so multi-device matches)
+      // Replace today's sales from server raw rows
       const today = todayKey();
       const rows = (data.salesTodayRaw||[]);
       const local = rows.map(r => ({
@@ -460,7 +460,7 @@
       sales = local;
       saveJSON(LS_SALES, sales);
 
-      // If server has the hotel name, show first one (optional)
+      // If server has a hotel name in rows, reflect it; else stick to local/default
       if((data.hotels||[]).length){
         setHotelName(data.hotels[0]);
       }
@@ -468,7 +468,7 @@
       renderFront(); renderScanLog(); renderAdmin();
       showToast('Synced from Google Sheets', 'ok');
     }catch(e){
-      // Silent fail if fetch blocked or not deployed public
+      // Silent if GET blocked
     }
   }
 
@@ -633,7 +633,7 @@
     renderFront(); renderScanLog(); renderAdmin();
   });
   syncCatalog.addEventListener('click', async ()=>{
-    const url=getGAS(); if(!url){ alert("Add Apps Script URL in Setup first."); return; }
+    const url=getGAS(); if(!url){ alert("Add Apps Script URL in Settings first."); return; }
     const payload=inventory.map(p=>({ barcode:p.barcode||"", name:p.name||"", priceSold:p.priceSold||0, vendorCost:p.vendorCost||0, startingInventory:p.startingInventory||0 }));
     await fetch(url,{ method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({type:"catalog", payload}), mode:"no-cors" });
     alert("Catalog sync sent. Check the 'Catalog' tab.");
@@ -648,6 +648,10 @@
       passModal.style.display="none";
       frontBtn.classList.remove('primary'); adminBtn.classList.add('primary');
       frontView.style.display="none"; adminView.style.display="block";
+      // Initialize settings fields with current values
+      hotelInput.value = getHotelName();
+      gasInput.value = getGAS();
+      setupMsg.textContent = '';
       renderAdmin();
     } else { passErr.textContent="Incorrect password"; }
   });
@@ -657,12 +661,13 @@
     adminPass=next; localStorage.setItem(LS_ADMIN_PASS, adminPass); alert("Password updated.");
   });
 
-  /******** Setup modal ********/
-  document.getElementById('setupOpen').addEventListener('click', ()=>{
-    hotelInput.value=getHotelName(); gasInput.value=getGAS(); setupMsg.textContent=""; setupModal.style.display="grid";
+  /******** Settings (Admin) ********/
+  saveSetup.addEventListener('click', ()=>{
+    setHotelName(hotelInput.value.trim());
+    setGAS(gasInput.value.trim());
+    refreshBadges();
+    setupMsg.textContent = 'Saved!';
   });
-  closeSetup.addEventListener('click', ()=>setupModal.style.display="none");
-  saveSetup.addEventListener('click', ()=>{ setHotelName(hotelInput.value.trim()||"Your Hotel Name"); setGAS(gasInput.value.trim()); refreshBadges(); setupMsg.textContent="Saved!"; });
   testPing.addEventListener('click', async ()=>{
     const url=getGAS(); if(!url){ setupMsg.textContent="Paste your Web App URL first."; return; }
     setupMsg.textContent="Sending test ping…";
@@ -795,8 +800,8 @@
     }
   }
   document.getElementById('undoOpen').addEventListener('click', ()=>{ buildUndoTable(); undoModal.style.display='grid'; });
-  undoCancel.addEventListener('click', ()=> undoModal.style.display='none');
-  undoConfirm.addEventListener('click', async ()=>{
+  document.getElementById('undoCancel').addEventListener('click', ()=> undoModal.style.display='none');
+  document.getElementById('undoConfirm').addEventListener('click', async ()=>{
     const sel = document.querySelector('input[name="undoPick"]:checked');
     if(!sel){ alert('Pick one item to remove.'); return; }
     const id = sel.value;
@@ -816,9 +821,12 @@
   /******** Init ********/
   function tickCST(){ cstClock.textContent = fmtTimeCST(new Date()); }
   async function init(){
-    refreshBadges(); ensureLocalDayOnSales();
-    await pullTodayFromServer();       // <-- NEW: pull server state on load
-    renderFront(); renderScanLog(); flushQueue(); tickCST(); setInterval(tickCST, 1000);
+    refreshBadges();
+    ensureLocalDayOnSales();
+    await pullTodayFromServer();      // pulls from Sheet using hard-coded/default URL
+    renderFront(); renderScanLog();
+    flushQueue();
+    tickCST(); setInterval(tickCST, 1000);
   }
   init();
 
