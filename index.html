@@ -183,7 +183,8 @@
   const isToday = ts => { try { return new Date(ts).toISOString().slice(0,10)===todayKey(); } catch { return false; } };
   const loadJSON = (k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch{ return f; }};
   const saveJSON = (k,v)=>localStorage.setItem(k,JSON.stringify(v));
-  const escapeHtml = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]}));
+  const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
 
   // ===== App state (localStorage-backed)
   let inventory = loadJSON(LS_INV, [
