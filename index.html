@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Hotel Inventory & Sales Tracker</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hotel Inventory Tracker</title>
 <style>
 body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#111;margin:0}
-.container{max-width:1100px;margin:auto;padding:20px}
+.container{max-width:1200px;margin:auto;padding:20px}
 header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
 h1{font-size:22px;margin:0}
 .btn{background:#007bff;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer}
@@ -15,9 +15,11 @@ h1{font-size:22px;margin:0}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{border-bottom:1px solid #eee;padding:8px;text-align:left}
 th.right,td.right{text-align:right}
-.small{font-size:12px;color:#555}
 .input{padding:6px 8px;border:1px solid #ccc;border-radius:6px;width:100%;font-size:14px}
 .toast{position:fixed;top:12px;right:12px;padding:10px 14px;border-radius:10px;background:#007bff;color:#fff;display:none}
+#adminView{display:none}
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center}
+.modal-content{background:#fff;padding:20px;border-radius:10px;width:90%;max-width:500px}
 </style>
 </head>
 <body>
@@ -29,148 +31,176 @@ th.right,td.right{text-align:right}
     <button id="adminBtn" class="btn">Admin</button>
   </div>
 </header>
-<div class="small">CST Time: <b id="cstClock">--</b></div>
+<div style="font-size:13px;margin-top:4px;">CST Time: <b id="cstClock">--</b></div>
 
-<!-- Front Desk -->
+<!-- FRONT -->
 <section id="frontView" class="card">
   <h3>Scan Items</h3>
   <input id="scanInput" class="input" placeholder="Click here to start scanning" readonly>
-  <div id="lastScan" class="small" style="margin-top:5px"></div>
-  <div class="card" style="margin-top:10px">
-    <div class="row">
-      <button id="undoOpen" class="btn" style="background:#dc3545">Undo Sale</button>
-      <button id="sessionPost" class="btn" style="background:#28a745">Post</button>
-    </div>
-  </div>
-  <table id="frontTable">
+  <div id="scanLog" style="margin-top:8px;font-size:13px;color:#444"></div>
+  <button id="openSession" class="btn" style="margin-top:10px;background:#28a745">Post Session</button>
+  <table id="frontTable" style="margin-top:10px">
     <thead><tr>
-      <th>Product</th><th class="right">Price</th><th class="right">Start</th>
-      <th class="right">Sold</th><th class="right">End</th><th class="right">Revenue</th>
-    </tr></thead>
-    <tbody></tbody>
+      <th>Product</th><th class="right">Price Sold</th><th class="right">Starting Inventory</th>
+      <th class="right">Units Sold Today</th><th class="right">Ending Inventory</th>
+      <th class="right">Price Sold × Units Sold</th>
+    </tr></thead><tbody></tbody>
   </table>
 </section>
 
-<!-- Admin -->
-<section id="adminView" class="card" style="display:none">
+<!-- ADMIN -->
+<section id="adminView" class="card">
   <h3>Admin Panel</h3>
-  <button id="exportCSV" class="btn">Export CSV</button>
-  <button id="clearSales" class="btn" style="background:#ffc107;color:#000">Clear Today’s Sales</button>
-  <button id="syncCatalog" class="btn" style="background:#17a2b8">Sync Catalog → Sheet</button>
-  <table id="adminTable">
-    <thead><tr>
-      <th>Name</th><th>Barcode</th><th class="right">Price</th><th class="right">Cost</th><th class="right">Start Inv.</th>
-    </tr></thead>
-    <tbody></tbody>
-  </table>
+  <div style="margin-bottom:8px;">
+    <input type="password" id="adminPass" placeholder="Enter password" class="input" style="width:200px;display:inline-block;">
+    <button id="loginBtn" class="btn">Login</button>
+  </div>
+  <div id="adminContent" style="display:none">
+    <button id="exportCSV" class="btn">Export CSV</button>
+    <button id="clearSales" class="btn" style="background:#ffc107;color:#000">Clear Today’s Sales</button>
+    <table id="adminTable" style="margin-top:10px">
+      <thead><tr>
+        <th>Name</th><th>Barcode</th><th class="right">Price</th><th class="right">Cost</th><th class="right">Start Inv.</th>
+      </tr></thead><tbody></tbody>
+    </table>
+  </div>
 </section>
 </div>
 
-<div id="toast" class="toast"></div>
+<!-- MODAL for session post -->
+<div id="postModal" class="modal">
+  <div class="modal-content">
+    <h3>Session Review</h3>
+    <div id="sessionList" style="max-height:200px;overflow:auto;font-size:14px;"></div>
+    <button id="postNow" class="btn" style="background:#28a745;margin-top:10px">Post</button>
+    <button id="closeModal" class="btn" style="background:#dc3545;margin-left:10px">Cancel</button>
+  </div>
+</div>
 
+<div id="toast" class="toast"></div>
 <script>
-const LS_INV="hotel_inventory_v4",LS_SALES="hotel_sales_v4",LS_GAS="gas_webapp_v4";
+/*** constants ***/
+const LS_INV="hotel_inventory_v5",LS_SALES="hotel_sales_v5",LS_GAS="gas_webapp_v5";
 const currency=n=>"$"+(Number(n||0).toFixed(2));
 const loadJSON=(k,f)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):f}catch{return f}};
 const saveJSON=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const escapeHtml=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
 const nowCST=()=>new Date(new Date().toLocaleString("en-US",{timeZone:"America/Chicago"}));
-function shiftKeyCST(d){const z=d||nowCST();const hr=z.getHours();if(hr<7)z.setDate(z.getDate()-1);return z.toISOString().slice(0,10)}
-function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";setTimeout(()=>t.style.display="none",1500)}
-function tickClock(){document.getElementById("cstClock").textContent=nowCST().toLocaleTimeString("en-US",{hour12:false})}
-setInterval(tickClock,1000);tickClock();
+function showToast(m){const t=document.getElementById("toast");t.textContent=m;t.style.display="block";setTimeout(()=>t.style.display="none",1200)}
+function tick(){document.getElementById("cstClock").textContent=nowCST().toLocaleTimeString("en-US",{hour12:false})}
+setInterval(tick,1000);tick();
 
+/*** data ***/
 let inventory=loadJSON(LS_INV,[
- {id:crypto.randomUUID(),barcode:"123",name:"Water",priceSold:1.99,vendorCost:0.5,startingInventory:50},
- {id:crypto.randomUUID(),barcode:"456",name:"Chips",priceSold:2.49,vendorCost:0.6,startingInventory:40}
+  {barcode:"123",name:"Water",priceSold:1.99,vendorCost:0.5,startingInventory:50},
+  {barcode:"456",name:"Chips",priceSold:2.49,vendorCost:0.6,startingInventory:40}
 ]);
+let sessionMap=new Map(); // current unposted session
 let sales=loadJSON(LS_SALES,[]);
 
-/*** Renderers ***/
+/*** renderers ***/
 function renderFront(){
   const map=new Map();sales.forEach(s=>map.set(s.barcode,(map.get(s.barcode)||0)+s.qty));
-  const tbody=document.querySelector("#frontTable tbody");tbody.innerHTML="";
+  const tb=document.querySelector("#frontTable tbody");tb.innerHTML="";
   inventory.forEach(p=>{
-    const sold=map.get(p.barcode)||0;const end=Math.max(0,p.startingInventory-sold);
+    const sold=map.get(p.barcode)||0;
+    const end=Math.max(0,p.startingInventory-sold);
     const rev=(p.priceSold||0)*sold;
     const tr=document.createElement("tr");
     tr.innerHTML=`<td>${escapeHtml(p.name)}</td><td class="right">${currency(p.priceSold)}</td>
-      <td class="right">${p.startingInventory}</td><td class="right">${sold}</td>
-      <td class="right">${end}</td><td class="right">${currency(rev)}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-function renderAdmin(){
-  const tbody=document.querySelector("#adminTable tbody");tbody.innerHTML="";
-  inventory.forEach(p=>{
-    const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.barcode)}</td>
-    <td class="right">${currency(p.priceSold)}</td><td class="right">${currency(p.vendorCost)}</td>
-    <td class="right">${p.startingInventory}</td>`;
-    tbody.appendChild(tr);
+    <td class="right">${p.startingInventory}</td><td class="right">${sold}</td>
+    <td class="right">${end}</td><td class="right">${currency(rev)}</td>`;
+    tb.appendChild(tr);
   });
 }
 
-/*** Scanner ***/
+/*** scanning ***/
 let buffer="",timer=null;
 document.addEventListener("keydown",e=>{
-  if(adminView.style.display==="block")return;
-  if(e.key==="Enter"){const code=buffer.trim();buffer="";
-    if(code)scanItem(code);return;}
+  if(adminVisible())return;
+  if(e.key==="Enter"){const code=buffer.trim();buffer="";if(code)addToSession(code);return;}
   if(e.key.length===1){buffer+=e.key;clearTimeout(timer);timer=setTimeout(()=>buffer="",100);}
 });
-function scanItem(code){
-  const p=inventory.find(x=>String(x.barcode).trim()===String(code).trim());
-  if(!p){showToast("Unknown barcode "+code);return;}
-  const now=new Date();sales.push({id:crypto.randomUUID(),barcode:code,qty:1,ts:now.toISOString()});
-  saveJSON(LS_SALES,sales);
-  renderFront();showToast("Scanned "+p.name);
-  document.getElementById("lastScan").textContent="Scanned: "+p.name;
+document.getElementById("scanInput").addEventListener("click",()=>showToast("Ready to scan..."));
+
+function addToSession(code){
+  const prod=inventory.find(p=>String(p.barcode).trim()===String(code).trim());
+  if(!prod){showToast("Unknown barcode "+code);return;}
+  sessionMap.set(code,(sessionMap.get(code)||0)+1);
+  showToast(prod.name+" +1");
+  renderSessionList();
 }
 
-/*** Undo Sale ***/
-document.getElementById("undoOpen").onclick=()=>{
-  const today=shiftKeyCST();const todays=sales.filter(s=>shiftKeyCST(new Date(s.ts))===today);
-  if(!todays.length)return alert("No sales today");
-  const opts=todays.map((s,i)=>`${i+1}. ${s.barcode}`).join("\n");
-  const n=parseInt(prompt("Select sale # to undo:\n"+opts));
-  if(!n||n>todays.length)return;
-  const id=todays[n-1].id;sales=sales.filter(x=>x.id!==id);
-  saveJSON(LS_SALES,sales);renderFront();showToast("Sale removed");
+/*** modal post flow ***/
+function renderSessionList(){
+  const div=document.getElementById("sessionList");
+  if(sessionMap.size===0){div.textContent="No items scanned.";}
+  else{
+    div.innerHTML="";
+    sessionMap.forEach((q,bc)=>{
+      const p=inventory.find(x=>x.barcode===bc)||{};
+      div.innerHTML+=`${escapeHtml(p.name||bc)} — ${q}<br>`;
+    });
+  }
+}
+document.getElementById("openSession").onclick=()=>{
+  renderSessionList();
+  document.getElementById("postModal").style.display="flex";
 };
-
-/*** Post Batch ***/
-document.getElementById("sessionPost").onclick=async()=>{
-  if(!sales.length)return showToast("Nothing to post");
-  const now=new Date();const url=localStorage.getItem(LS_GAS);
-  const entries=sales.map(s=>{const p=inventory.find(x=>x.barcode===s.barcode)||{};return{
-    id:s.id,ts:s.ts,hotel:"Hotel",barcode:s.barcode,name:p.name||"",priceSold:p.priceSold||0,
-    qty:s.qty,revenue:(p.priceSold||0)*s.qty}});
-  if(!url)return alert("Add GAS URL in console via localStorage.setItem('gas_webapp_v4','<URL>')");
-  await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},
+document.getElementById("closeModal").onclick=()=>{
+  document.getElementById("postModal").style.display="none";
+};
+document.getElementById("postNow").onclick=async()=>{
+  if(sessionMap.size===0)return showToast("No items to post");
+  const now=nowCST();const ts=now.toISOString();
+  const entries=[];
+  sessionMap.forEach((qty,bc)=>{
+    const p=inventory.find(x=>x.barcode===bc)||{};
+    entries.push({id:crypto.randomUUID(),ts,barcode:bc,name:p.name||"",priceSold:p.priceSold||0,qty,revenue:(p.priceSold||0)*qty});
+    sales.push({barcode:bc,qty,ts});
+  });
+  saveJSON(LS_SALES,sales);
+  renderFront();
+  showToast("Posted");
+  const url=localStorage.getItem(LS_GAS);
+  if(url)await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({type:"batch",payload:entries}),mode:"no-cors"});
-  showToast("Posted to Sheet");
+  sessionMap.clear();
+  document.getElementById("postModal").style.display="none";
 };
 
-/*** Buttons ***/
-document.getElementById("frontBtn").onclick=()=>{frontView.style.display="block";adminView.style.display="none";};
-document.getElementById("adminBtn").onclick=()=>{frontView.style.display="none";adminView.style.display="block";renderAdmin();};
+/*** admin ***/
+function adminVisible(){return document.getElementById("adminView").style.display==="block";}
+document.getElementById("frontBtn").onclick=()=>{document.getElementById("frontView").style.display="block";document.getElementById("adminView").style.display="none";}
+document.getElementById("adminBtn").onclick=()=>{document.getElementById("frontView").style.display="none";document.getElementById("adminView").style.display="block";}
+document.getElementById("loginBtn").onclick=()=>{
+  const pw=document.getElementById("adminPass").value.trim();
+  if(pw!=="admin123")return alert("Wrong password");
+  document.getElementById("adminContent").style.display="block";
+  renderAdmin();
+};
+function renderAdmin(){
+  const tb=document.querySelector("#adminTable tbody");tb.innerHTML="";
+  inventory.forEach(p=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${escapeHtml(p.name)}</td><td>${p.barcode}</td>
+    <td class="right">${currency(p.priceSold)}</td><td class="right">${currency(p.vendorCost)}</td><td class="right">${p.startingInventory}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+/*** utils ***/
 document.getElementById("exportCSV").onclick=()=>{
   const h=["barcode","name","priceSold","vendorCost","startingInventory"];
   const body=inventory.map(p=>[p.barcode,p.name,p.priceSold,p.vendorCost,p.startingInventory].join(",")).join("\n");
-  const csv=h.join(",")+"\n"+body;const blob=new Blob([csv],{type:"text/csv"});
+  const csv=h.join(",")+"\n"+body;
+  const blob=new Blob([csv],{type:"text/csv"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="inventory.csv";a.click();
 };
-document.getElementById("clearSales").onclick=()=>{if(confirm("Clear daily sales?")){sales=[];saveJSON(LS_SALES,sales);renderFront();}};
-document.getElementById("syncCatalog").onclick=async()=>{
-  const url=localStorage.getItem(LS_GAS);if(!url)return alert("Add GAS URL first");
-  await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({type:"catalog",payload:inventory}),mode:"no-cors"});
-  showToast("Catalog synced");
-};
+document.getElementById("clearSales").onclick=()=>{if(confirm("Reset daily sales?")){sales=[];saveJSON(LS_SALES,sales);renderFront();}};
 
 /*** init ***/
-renderFront();renderAdmin();
+renderFront();
 </script>
 </body>
 </html>
