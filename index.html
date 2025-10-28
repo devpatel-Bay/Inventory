@@ -5,7 +5,7 @@
 <title>Hotel Inventory & Sales Tracker</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
-  :root { --bg:#f6f6f7; --card:#fff; --border:#e5e7eb; --text:#111; --muted:#6b7280; }
+  :root { --bg:#f6f6f7; --card:#fff; --border:#e5e7eb; --text:#111; --muted:#6b7280; --ok:#16a34a; --err:#dc2626; --warn:#f59e0b;}
   * { box-sizing: border-box; }
   body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:var(--bg); color:var(--text); }
   .container { max-width: 1100px; margin: 0 auto; padding: 16px; }
@@ -28,6 +28,15 @@
   .grow { flex:1 1 auto; }
   .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.3); display:none; place-items:center; padding:16px; z-index:1000; }
   .modal { background:#fff; border:1px solid var(--border); border-radius:16px; width:100%; max-width:480px; padding:16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+  .toast { position:fixed; top:12px; right:12px; z-index:2000; padding:10px 14px; border-radius:12px; color:#fff; font-weight:600; display:none; }
+  .toast.ok { background:var(--ok); }
+  .toast.err { background:var(--err); }
+  .toast.warn { background:var(--warn); color:#111; }
+  #scanStrip { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .chip { border:1px solid var(--border); background:#fff; border-radius:999px; padding:4px 8px; font-size:12px; }
+  .chip.ok { border-color:#bbf7d0; background:#f0fdf4; }
+  .chip.err { border-color:#fecaca; background:#fef2f2; }
+  .banner { background:#fff7ed; border:1px solid #fed7aa; color:#7c2d12; padding:8px 12px; border-radius:12px; margin-top:8px; display:none; }
 </style>
 </head>
 <body>
@@ -44,6 +53,8 @@
       <div class="small">Hotel: <b id="hotelBadge">Your Hotel Name</b> • GAS: <span id="gasBadge">Not set</span></div>
       <button id="setupOpen" class="btn">Setup</button>
     </div>
+
+    <div id="focusBanner" class="banner">Scanner input wasn’t focused. We refocused it for you—please scan again.</div>
 
     <!-- Front Desk -->
     <section id="frontView" class="card">
@@ -63,6 +74,8 @@
           <input id="filterInput" class="input" placeholder="Filter by name or barcode" />
         </div>
       </div>
+
+      <div id="scanStrip" aria-live="polite"></div>
 
       <div class="card" style="margin-top:16px;">
         <div class="card-title">
@@ -172,21 +185,31 @@
     </div>
   </div>
 
+  <div id="toast" class="toast"></div>
+
 <script>
-  // ===== Storage keys
+  /******** Storage keys ********/
   const LS_INV="hotel_inventory_v1", LS_SALES="hotel_sales_v1", LS_ADMIN_PASS="hotel_admin_pass_v1";
   const LS_QUEUE="sales_queue_v1", LS_LAST_DAY="last_open_day_v1", LS_HOTEL="hotel_name_v1", LS_GAS="gas_webapp_url_v1";
 
-  // ===== Helpers
+  /******** Helpers ********/
   const currency = n => isNaN(n) ? "-" : Number(n).toLocaleString(undefined,{style:"currency",currency:"USD"});
-  const todayKey = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
-  const isToday = ts => { try { return new Date(ts).toISOString().slice(0,10)===todayKey(); } catch { return false; } };
+
+  // Local date (client timezone) helpers — avoids UTC drift
+  const localDateKey = d => {
+    const dt = (d instanceof Date) ? d : new Date(d);
+    return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+  };
+  const todayKey = () => localDateKey(new Date());
+  const isTodayLocal = ts => { try { return localDateKey(ts) === todayKey(); } catch { return false; } };
+
   const loadJSON = (k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch{ return f; }};
   const saveJSON = (k,v)=>localStorage.setItem(k,JSON.stringify(v));
   const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+  const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-  // ===== App state (localStorage-backed)
+  /******** App state ********/
   let inventory = loadJSON(LS_INV, [
     { id: crypto.randomUUID(), barcode:"0123456789012", name:"Bottled Water 16oz", priceSold:1.99, vendorCost:0.45, startingInventory:50, category:"Drinks" },
     { id: crypto.randomUUID(), barcode:"1234567890123", name:"Chips - Classic",    priceSold:2.49, vendorCost:0.65, startingInventory:40, category:"Snacks" },
@@ -195,10 +218,10 @@
   let sales = loadJSON(LS_SALES, []);
   let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
 
-  // new day reset of local "today" sales list
+  // New day: clear local "today" list (only today's cached view)
   (function(){ const t=todayKey(); const last=localStorage.getItem(LS_LAST_DAY); if(last && last!==t){ sales=[]; saveJSON(LS_SALES,sales); } localStorage.setItem(LS_LAST_DAY,t); })();
 
-  // ===== DOM refs
+  /******** DOM ********/
   const frontBtn = document.getElementById('frontBtn');
   const adminBtn = document.getElementById('adminBtn');
   const frontView = document.getElementById('frontView');
@@ -210,6 +233,8 @@
   const frontTbody = document.querySelector('#frontTable tbody');
   const unitsSoldEl = document.getElementById('unitsSold');
   const revenueTodayEl = document.getElementById('revenueToday');
+  const focusBanner = document.getElementById('focusBanner');
+  const scanStrip = document.getElementById('scanStrip');
 
   const adminFilter = document.getElementById('adminFilter');
   const adminTbody = document.querySelector('#adminTable tbody');
@@ -239,7 +264,7 @@
   const clearToday = document.getElementById('clearToday');
   const syncCatalog = document.getElementById('syncCatalog');
 
-  // ===== Setup state
+  /******** Setup state ********/
   const getHotelName = ()=> localStorage.getItem(LS_HOTEL) || "Your Hotel Name";
   const setHotelName = n => localStorage.setItem(LS_HOTEL, n);
   const getGAS = ()=> localStorage.getItem(LS_GAS) || "";
@@ -250,7 +275,7 @@
     gasBadge.textContent = getGAS() ? "Saved" : "Not set";
   }
 
-  // ===== Networking (send-first, queue-on-fail)
+  /******** Networking (send-first, queue-on-fail) ********/
   const loadQueue = ()=>loadJSON(LS_QUEUE,[]);
   const saveQueue = q=>saveJSON(LS_QUEUE,q);
 
@@ -270,14 +295,37 @@
   }
   window.addEventListener('online', flushQueue);
 
-  // ===== Derived “today” map
+  /******** Derived today map (LOCAL day) ********/
   function todaySalesMap(){
     const m=new Map();
-    for(const s of sales){ if(!isToday(s.ts)) continue; m.set(s.barcode,(m.get(s.barcode)||0)+(s.qty||0)); }
+    for(const s of sales){ if(!isTodayLocal(s.ts)) continue; m.set(s.barcode,(m.get(s.barcode)||0)+(s.qty||0)); }
     return m;
   }
 
-  // ===== Renderers
+  /******** Toast + sounds ********/
+  const toastEl = document.getElementById('toast');
+  function showToast(msg, kind='ok', ms=1200){
+    toastEl.textContent = msg;
+    toastEl.className = `toast ${kind}`;
+    toastEl.style.display = 'block';
+    setTimeout(()=> toastEl.style.display='none', ms);
+  }
+  function beepOk(){ tone(880, 80); }
+  function beepErr(){ tone(220, 160); }
+  function tone(freq, dur){
+    try{
+      const ctx = new (window.AudioContext||window.webkitAudioContext)();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type='sine'; o.frequency.value=freq;
+      o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime+0.01);
+      o.start();
+      setTimeout(()=>{ g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.02); o.stop(ctx.currentTime+0.03); ctx.close(); }, dur);
+    }catch{}
+  }
+
+  /******** Renderers ********/
   function renderFront(){
     const query = (filterInput.value||"").trim().toLowerCase();
     const map = todaySalesMap();
@@ -350,11 +398,11 @@
     }
   }
 
-  // ===== Filters
+  /******** Actions: filters ********/
   document.getElementById('filterInput').addEventListener('input', renderFront);
   document.getElementById('adminFilter').addEventListener('input', renderAdmin);
 
-  // Add product / CSV
+  /******** Catalog mgmt ********/
   addProduct.addEventListener('click', ()=>{
     inventory.push({ id:crypto.randomUUID(), barcode:"", name:"New Product", priceSold:0, vendorCost:0, startingInventory:0, category:"" });
     saveJSON(LS_INV, inventory); renderFront(); renderAdmin();
@@ -395,7 +443,7 @@
 
   clearToday.addEventListener('click', ()=>{
     if(!confirm("Clear today’s sales (today only)?")) return;
-    const day=todayKey(); sales=sales.filter(s=>s.ts.slice(0,10)!==day); saveJSON(LS_SALES,sales); renderFront(); renderAdmin();
+    const day=todayKey(); sales=sales.filter(s=>localDateKey(s.ts)!==day); saveJSON(LS_SALES,sales); renderFront(); renderAdmin();
   });
 
   syncCatalog.addEventListener('click', async ()=>{
@@ -405,8 +453,8 @@
     alert("Catalog sync sent. Check the 'Catalog' tab.");
   });
 
-  // Tabs + admin auth
-  frontBtn.addEventListener('click', ()=>{ frontBtn.classList.add('primary'); adminBtn.classList.remove('primary'); frontView.style.display="block"; adminView.style.display="none"; });
+  /******** Tabs + admin auth ********/
+  frontBtn.addEventListener('click', ()=>{ frontBtn.classList.add('primary'); adminBtn.classList.remove('primary'); frontView.style.display="block"; adminView.style.display="none"; scanInput.focus(); });
   adminBtn.addEventListener('click', ()=>{
     passErr.textContent=""; passField.value=""; passModal.style.display="grid";
   });
@@ -427,7 +475,9 @@
     adminPass=next; localStorage.setItem(LS_ADMIN_PASS, adminPass); alert("Password updated.");
   });
 
-  // Setup modal
+  /******** Setup modal ********/
+  const hotelBadgeEl = document.getElementById('hotelBadge');
+  const gasBadgeEl = document.getElementById('gasBadge');
   setupOpen.addEventListener('click', ()=>{
     hotelInput.value=getHotelName();
     gasInput.value=getGAS();
@@ -451,35 +501,88 @@
     setupMsg.textContent = ok ? "Ping sent (check Sales tab)" : "Ping failed (check deployment/permissions).";
   });
 
-  // Front scan: input-only, Enter/CR, de-dupe 300ms
+  /******** Scanner handling ********/
+  // 1) Standard input (when focused)
   scanInput.addEventListener('keydown', async (e)=>{
-    if(e.key!=='Enter') return;
+    if(e.key!=='Enter' && e.key!=='NumpadEnter') return;
     const code=scanInput.value.trim(); scanInput.value="";
     if(!code) return;
+    await onScan(code);
+  });
 
-    // 300ms de-dupe
-    window.__lastScanSig = window.__lastScanSig || {code:"", t:0};
-    const now=Date.now(), sig=`${code}|1`;
-    if(window.__lastScanSig.code===sig && (now-window.__lastScanSig.t)<300) return;
-    window.__lastScanSig={code:sig, t:now};
+  // 2) Global capture (works even if input not focused)
+  let buffer = '';
+  let bufTimer = null;
+  const INTERVAL = 50; // ms gap that separates scans vs human typing
+  document.addEventListener('keydown', (e)=>{
+    // ignore if typing in inputs except our scanInput
+    const t = e.target;
+    const tag = t && (t.tagName || '').toLowerCase();
+    const isEditable = (tag==='input' || tag==='textarea' || t.isContentEditable);
+    if(isEditable && t!==scanInput) return;
 
+    if(e.key==='Enter' || e.key==='NumpadEnter'){
+      const code = buffer.trim();
+      buffer = '';
+      if(code){ onScan(code); }
+      e.preventDefault();
+      return;
+    }
+    if(e.key.length===1){
+      buffer += e.key;
+      clearTimeout(bufTimer);
+      bufTimer = setTimeout(()=>{ buffer=''; }, INTERVAL);
+    }
+  });
+
+  // Focus guard: if page becomes visible, refocus
+  document.addEventListener('visibilitychange', ()=>{
+    if(!document.hidden){ scanInput.focus(); }
+  });
+
+  // Add a small banner if input wasn’t focused when scan happened
+  function nudgeFocus(){
+    if(document.activeElement !== scanInput){
+      scanInput.focus();
+      focusBanner.style.display = 'block';
+      setTimeout(()=> focusBanner.style.display='none', 1500);
+    }
+  }
+
+  async function onScan(code){
+    nudgeFocus();
     const prod=inventory.find(p=>p.barcode===code);
     if(prod){
       lastScan.innerHTML = `Last Scan: <b>${escapeHtml(prod.name)}</b> (${escapeHtml(code)}) • ${currency(prod.priceSold)}`;
       await recordSale(prod, 1);
+      addChip(`${prod.name} • +1`, 'ok');
+      beepOk();
+      showToast('Sale recorded', 'ok');
     }else{
       lastScan.textContent = `Unknown barcode: ${code}`;
+      addChip(`Unknown ${code}`, 'err');
+      beepErr();
+      showToast('Unknown barcode', 'err');
     }
-  });
+  }
+
+  function addChip(txt, kind='ok'){
+    const span=document.createElement('span');
+    span.className = `chip ${kind==='err'?'err':'ok'}`;
+    span.textContent = txt;
+    scanStrip.prepend(span);
+    const max=12; // keep it tidy
+    while(scanStrip.children.length>max){ scanStrip.removeChild(scanStrip.lastChild); }
+  }
 
   // Undo last (today) — also remove in Google Sheet (by id or by barcode+ts)
   undoBtn.addEventListener('click', async ()=>{
     const idx = [...sales]
       .map((s,i)=>({s,i}))
-      .filter(({s})=> isToday(s.ts))
+      .filter(({s})=> isTodayLocal(s.ts))
       .map(({i})=> i)
       .pop();
-    if(idx===undefined) return;
+    if(idx===undefined){ showToast('Nothing to undo', 'warn'); return; }
 
     const removed = sales[idx];               // { id, barcode, qty, ts }
     const copy = [...sales];
@@ -487,6 +590,9 @@
     sales = copy;
     saveJSON(LS_SALES, sales);
     renderFront(); renderAdmin();
+    addChip(`UNDO ${removed.barcode}`, 'ok');
+    beepOk();
+    showToast('Last sale undone', 'ok');
 
     await sendUndoToGAS(removed);
   });
@@ -506,8 +612,9 @@
   // Record sale (send-first, queue on fail, UUID)
   async function recordSale(prod, qty){
     const ts=new Date().toISOString(), id=crypto.randomUUID();
-    // update local UI immediately
-    sales.push({ id, barcode: prod.barcode, qty, ts }); saveJSON(LS_SALES, sales); renderFront(); renderAdmin();
+    sales.push({ id, barcode: prod.barcode, qty, ts });
+    saveJSON(LS_SALES, sales);
+    renderFront(); renderAdmin();
 
     const evt={ type:"sale", payload:{
       id, ts, hotel:getHotelName(), barcode:prod.barcode, name:prod.name,
@@ -517,12 +624,14 @@
     if(!ok){ const q=loadQueue(); q.push(evt); saveQueue(q); } else { flushQueue(); }
   }
 
-  // Initial
-  function refreshBadges(){ hotelBadge.textContent = getHotelName(); gasBadge.textContent = getGAS() ? "Saved" : "Not set"; }
-  refreshBadges();
-  renderFront();
-  flushQueue();
-  scanInput.focus();
+  /******** Initial ********/
+  function init(){
+    refreshBadges();
+    renderFront();
+    flushQueue();
+    scanInput.focus();
+  }
+  init();
 </script>
 </body>
 </html>
