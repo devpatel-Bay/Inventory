@@ -5,41 +5,65 @@
 <title>Hotel Inventory & Sales Tracker</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
-  :root { --bg:#f6f6f7; --card:#fff; --border:#e5e7eb; --text:#111; --muted:#6b7280; --ok:#16a34a; --err:#dc2626; --warn:#f59e0b;}
+  :root {
+    --bg:#0b0f14;           /* dark, finance-y */
+    --card:#0f141b;
+    --card-2:#111821;
+    --border:#1f2a37;
+    --text:#f3f4f6;
+    --muted:#9aa4b2;
+    --ok:#22c55e;           /* green up */
+    --err:#ef4444;          /* red down */
+    --warn:#f59e0b;
+    --accent:#2dd4bf;       /* robinhood-ish teal accent */
+  }
   * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:var(--bg); color:var(--text); }
-  .container { max-width: 1100px; margin: 0 auto; padding: 16px; }
-  header { display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
-  h1 { font-size: 22px; font-weight: 700; margin:0; }
+  body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+         background:var(--bg); color:var(--text); }
+  .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  header { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+  h1 { font-size: 22px; font-weight: 800; letter-spacing:.2px; margin:0; }
   .sub { font-size:12px; color:var(--muted); }
-  .btn { border:1px solid var(--border); background:#fff; padding:8px 12px; border-radius:14px; font-size:14px; cursor:pointer; }
-  .btn.primary { background:#111; color:#fff; }
+  .btn { border:1px solid var(--border); background:var(--card-2); padding:8px 12px; border-radius:14px; font-size:14px; cursor:pointer; color:var(--text); }
+  .btn.primary { background:var(--accent); color:#051013; font-weight:700; }
   .btn:active { transform: scale(.98); }
-  .card { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px; box-shadow: 0 1px 2px rgba(0,0,0,.03); margin-top:16px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px; box-shadow: 0 1px 2px rgba(0,0,0,.25); margin-top:16px; }
+  .card-ghost { background:var(--card-2); border:1px dashed var(--border); border-radius:16px; padding:10px 12px; }
   .card-title { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px; }
-  .input { width:100%; border:1px solid var(--border); border-radius:12px; padding:10px; font-size:14px; }
-  .input[readonly] { background:#fafafa; cursor:pointer; }
+  .input { width:100%; border:1px solid var(--border); background:#0c1218; color:var(--text); border-radius:12px; padding:10px; font-size:14px; }
+  .input[readonly] { cursor:pointer; }
   .input[type="number"] { text-align:right; }
   table { width:100%; border-collapse:collapse; font-size:14px; }
-  thead tr { background:#f3f4f6; }
+  thead tr { background:#0c131a; }
   th, td { text-align:left; padding:8px; border-bottom:1px solid var(--border); vertical-align: middle; }
   th.right, td.right { text-align:right; }
   .small { font-size:12px; color:var(--muted); }
-  .pill { display:inline-flex; border:1px solid var(--border); border-radius:999px; padding:2px 8px; font-size:12px; color:#374151; }
+  .pill { display:inline-flex; border:1px solid var(--border); background:#0c131a; border-radius:999px; padding:2px 8px; font-size:12px; color:#a9b5c3; }
   .row { display:flex; gap:12px; }
+  .wrap { flex-wrap: wrap; }
   .grow { flex:1 1 auto; }
-  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; place-items:center; padding:16px; z-index:1000; }
-  .modal { background:#fff; border:1px solid var(--border); border-radius:16px; width:100%; max-width:620px; padding:16px; box-shadow: 0 6px 24px rgba(0,0,0,.12); }
-  .toast { position:fixed; top:12px; right:12px; z-index:2000; padding:10px 14px; border-radius:12px; color:#fff; font-weight:600; display:none; }
+  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; place-items:center; padding:16px; z-index:1000; }
+  .modal { background:var(--card); border:1px solid var(--border); border-radius:16px; width:100%; max-width:680px; padding:16px; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+  .toast { position:fixed; top:12px; right:12px; z-index:2000; padding:10px 14px; border-radius:12px; color:#051013; font-weight:700; display:none; }
   .toast.ok { background:var(--ok); }
-  .toast.err { background:var(--err); }
-  .toast.warn { background:var(--warn); color:#111; }
+  .toast.err { background:var(--err); color:#fff; }
+  .toast.warn { background:var(--warn); }
   #scanStrip { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-  .chip { border:1px solid var(--border); background:#fff; border-radius:999px; padding:4px 8px; font-size:12px; }
-  .chip.ok { border-color:#bbf7d0; background:#f0fdf4; }
-  .chip.err { border-color:#fecaca; background:#fef2f2; }
-  .banner { background:#fff7ed; border:1px solid #fed7aa; color:#7c2d12; padding:8px 12px; border-radius:12px; margin-top:8px; display:none; }
-  .pill-kbd { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; border:1px solid var(--border); padding:1px 6px; border-radius:6px; background:#fff; }
+  .chip { border:1px solid var(--border); background:#0c131a; border-radius:999px; padding:4px 8px; font-size:12px; }
+  .chip.ok { border-color:#064e3b; background:#022a20; color:#7ee2af; }
+  .chip.err { border-color:#7f1d1d; background:#2a0a0a; color:#f5a3a3; }
+  .banner { background:#1a1303; border:1px solid #7a5908; color:#ffd89b; padding:8px 12px; border-radius:12px; margin-top:8px; display:none; }
+  .spark { width:120px; height:32px; display:block; }
+  .stk { display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--card-2); border:1px solid var(--border); border-radius:14px; padding:10px 12px; }
+  .stk .name { font-weight:700; }
+  .stk .price { font-variant-numeric: tabular-nums; }
+  .stk.up { border-color:#064e3b; }
+  .stk.down { border-color:#7f1d1d; }
+  .tag-up { color:var(--ok); }
+  .tag-down { color:var(--err); }
+  .accordion-item { border:1px solid var(--border); border-radius:12px; margin-top:8px; overflow:hidden; }
+  .accordion-head { display:flex; align-items:center; justify-content:space-between; background:#0c131a; padding:10px 12px; cursor:pointer; }
+  .accordion-body { display:none; background:#0f141b; padding:10px 12px; }
 </style>
 </head>
 <body>
@@ -47,7 +71,7 @@
     <header>
       <div>
         <h1>Hotel Inventory & Sales Tracker</h1>
-        <div class="sub">Local time (America/Chicago): <b id="cstClock">--:--:--</b></div>
+        <div class="sub">Local time (America/Chicago): <b id="cstClock">--:--:--</b> • Shift boundary: 7:00 AM</div>
       </div>
       <div>
         <button id="frontBtn" class="btn primary">Front Desk (Scan)</button>
@@ -65,11 +89,11 @@
     <!-- Front Desk -->
     <section id="frontView" class="card">
       <div class="card-title">
-        <h3 style="margin:0; font-size:16px; font-weight:600">Scan Items</h3>
-        <div class="small">Open a Scan Session to capture barcodes. Keyboard shortcut disabled by policy.</div>
+        <h3 style="margin:0; font-size:16px; font-weight:700">Scan Items</h3>
+        <div class="small">Open a Scan Session to capture barcodes (keyboard shortcut disabled).</div>
       </div>
 
-      <div class="row">
+      <div class="row wrap">
         <div class="grow">
           <div class="small" style="margin-bottom:6px">Barcode Input (opens scan session)</div>
           <input id="scanInput" class="input" placeholder="Click here to start a Scan Session" readonly />
@@ -83,17 +107,17 @@
 
       <div id="scanStrip" aria-live="polite"></div>
 
-      <!-- Moved here: Units & Revenue summary directly under Scan Items -->
+      <!-- Summary directly under Scan Items -->
       <div class="row" style="gap:16px; margin-top:12px;">
-        <div class="card grow" style="margin-top:0;">
-          <div class="small">Units Sold Today</div>
-          <div id="unitsSold" style="font-size:18px; font-weight:600">0</div>
+        <div class="card-ghost grow">
+          <div class="small">Units Sold (current shift-day)</div>
+          <div id="unitsSold" style="font-size:20px; font-weight:800">0</div>
         </div>
-        <div class="card grow" style="margin-top:0;">
+        <div class="card-ghost grow">
           <div class="small">Revenue (Price × Units)</div>
-          <div id="revenueToday" style="font-size:18px; font-weight:600">$0.00</div>
+          <div id="revenueToday" style="font-size:20px; font-weight:800">$0.00</div>
         </div>
-        <div class="card" style="margin-top:0;">
+        <div class="card-ghost">
           <div class="small">Actions</div>
           <button id="undoOpen" class="btn" style="margin-top:6px;">Undo a Posted Item…</button>
         </div>
@@ -102,7 +126,7 @@
       <!-- Today’s Scan Log -->
       <div class="card" style="margin-top:16px;">
         <div class="card-title">
-          <h3 style="margin:0; font-size:16px; font-weight:600">Today’s Scan Log</h3>
+          <h3 style="margin:0; font-size:16px; font-weight:700">Today’s Scan Log</h3>
         </div>
         <div style="overflow:auto">
           <table id="logTable">
@@ -110,8 +134,8 @@
               <tr>
                 <th>Product</th>
                 <th>Barcode</th>
-                <th class="right">UNITS SOLD TODAY</th>
-                <th class="right">REVENUE TODAY</th>
+                <th class="right">UNITS SOLD (shift-day)</th>
+                <th class="right">REVENUE (shift-day)</th>
                 <th class="right">LAST SCAN</th>
               </tr>
             </thead>
@@ -123,7 +147,7 @@
       <!-- Inventory ranked -->
       <div class="card" style="margin-top:16px;">
         <div class="card-title">
-          <h3 style="margin:0; font-size:16px; font-weight:600">Inventory (ranked by Units Sold Today)</h3>
+          <h3 style="margin:0; font-size:16px; font-weight:700">Inventory (ranked by Units Sold Today)</h3>
         </div>
         <div style="overflow:auto">
           <table id="frontTable">
@@ -132,7 +156,7 @@
                 <th>Product</th>
                 <th class="right">PRICE SOLD</th>
                 <th class="right">STARTING INVENTORY</th>
-                <th class="right">UNITS SOLD TODAY</th>
+                <th class="right">UNITS SOLD (shift-day)</th>
                 <th class="right">ENDING INVENTORY</th>
                 <th class="right">PRICE SOLD × UNITS SOLD</th>
               </tr>
@@ -146,7 +170,7 @@
     <!-- Admin -->
     <section id="adminView" class="card" style="display:none">
       <div class="card-title">
-        <h3 style="margin:0; font-size:16px; font-weight:600">Admin Controls</h3>
+        <h3 style="margin:0; font-size:16px; font-weight:700">Admin Controls</h3>
         <div class="row">
           <button id="addProduct" class="btn">Add Product</button>
           <button id="exportCSV" class="btn">Export CSV</button>
@@ -157,29 +181,42 @@
         </div>
       </div>
 
-      <div class="row" style="margin-bottom:8px">
-        <input id="adminFilter" class="input grow" placeholder="Filter by name, barcode, or category" />
+      <!-- Robinhood-like cards -->
+      <div class="row wrap" id="stkRow" style="gap:12px;"></div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="card-title">
+          <h3 style="margin:0; font-size:16px; font-weight:700">Product Table</h3>
+          <input id="adminFilter" class="input" placeholder="Filter by name, barcode, or category" style="max-width:320px" />
+        </div>
+        <div style="overflow:auto">
+          <table id="adminTable">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Barcode</th>
+                <th>Category</th>
+                <th class="right">PRICE SOLD</th>
+                <th class="right">VENDOR COST</th>
+                <th class="right">STARTING INVENTORY</th>
+                <th class="right">UNITS SOLD (shift-day)</th>
+                <th class="right">ENDING INVENTORY</th>
+                <th class="right">PRICE SOLD × UNITS SOLD</th>
+                <th class="right">ENDING INVENTORY (×) VENDOR COST</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
 
-      <div style="overflow:auto">
-        <table id="adminTable">
-          <thead>
-            <tr>
-              <th>Product</th>
-              <th>Barcode</th>
-              <th>Category</th>
-              <th class="right">PRICE SOLD</th>
-              <th class="right">VENDOR COST</th>
-              <th class="right">STARTING INVENTORY</th>
-              <th class="right">UNITS SOLD TODAY</th>
-              <th class="right">ENDING INVENTORY</th>
-              <th class="right">PRICE SOLD × UNITS SOLD</th>
-              <th class="right">ENDING INVENTORY (×) VENDOR COST</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+      <!-- Daily Log -->
+      <div class="card" style="margin-top:16px;">
+        <div class="card-title">
+          <h3 style="margin:0; font-size:16px; font-weight:700">Daily Log (shift-days at 7 AM CST)</h3>
+        </div>
+        <div id="dayLog"></div>
       </div>
     </section>
   </div>
@@ -189,11 +226,11 @@
     <div class="modal">
       <h3 style="margin-top:0">Setup</h3>
       <div class="row" style="align-items:center; margin-bottom:8px">
-        <label style="width:120px">Hotel name</label>
+        <label style="width:140px">Hotel name</label>
         <input id="hotelInput" class="input grow" />
       </div>
       <div class="row" style="align-items:center">
-        <label style="width:120px">Apps Script URL</label>
+        <label style="width:140px">Apps Script URL</label>
         <input id="gasInput" class="input grow" placeholder="https://script.google.com/macros/s/.../exec" />
       </div>
       <div id="setupMsg" class="small" style="margin-top:8px"></div>
@@ -210,7 +247,7 @@
     <div class="modal">
       <h3 style="margin-top:0">Enter Admin Password</h3>
       <input id="passField" class="input" type="password" placeholder="Password (default: admin123)" />
-      <div id="passErr" style="color:#dc2626; margin-top:6px; font-size:14px"></div>
+      <div id="passErr" style="color:#ef4444; margin-top:6px; font-size:14px"></div>
       <div class="row" style="justify-content:flex-end; margin-top:12px">
         <button id="passCancel" class="btn">Cancel</button>
         <button id="passOk" class="btn primary">Unlock</button>
@@ -267,20 +304,30 @@
 
 <script>
   /******** Storage keys ********/
-  const LS_INV="hotel_inventory_v1", LS_SALES="hotel_sales_v1", LS_ADMIN_PASS="hotel_admin_pass_v1";
-  const LS_QUEUE="sales_queue_v1", LS_LAST_DAY="last_open_day_v1", LS_HOTEL="hotel_name_v1", LS_GAS="gas_webapp_url_v1";
+  const LS_INV="hotel_inventory_v2", LS_SALES="hotel_sales_v2", LS_ADMIN_PASS="hotel_admin_pass_v1";
+  const LS_QUEUE="sales_queue_v1", LS_SHIFT_KEY="last_shift_key_v1", LS_HOTEL="hotel_name_v1", LS_GAS="gas_webapp_url_v1";
+  const LS_HIST="sales_history_v1"; // per shift-day history for sparklines and day log
 
   /******** Helpers ********/
   const currency = n => isNaN(n) ? "-" : Number(n).toLocaleString(undefined,{style:"currency",currency:"USD"});
-  const localDateKey = d => { const dt = (d instanceof Date)? d : new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`; };
-  const todayKey = () => localDateKey(new Date());
+  function fmtCST(date, opts) {
+    return new Intl.DateTimeFormat('en-US', Object.assign({ timeZone:'America/Chicago' }, opts || {
+      year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', second:'2-digit'
+    })).format(date);
+  }
+  function nowCST(){ return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })); }
+  function shiftKeyCST(d){
+    const z = d ? new Date(d) : nowCST();
+    // If time < 07:00 CST, we treat as previous day’s shift
+    const hour = z.getHours();
+    const base = new Date(z);
+    if (hour < 7) base.setDate(base.getDate()-1);
+    return `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}-${String(base.getDate()).padStart(2,'0')}`;
+  }
   const loadJSON = (k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch{ return f; }};
   const saveJSON = (k,v)=>localStorage.setItem(k,JSON.stringify(v));
   const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  function fmtTime(ts){ try{ const d=new Date(ts); return d.toLocaleTimeString('en-US',{hour:'2-digit', minute:'2-digit', second:'2-digit'}) }catch{ return '-'; } }
-  function fmtTimeCST(date){
-    return new Intl.DateTimeFormat('en-US',{ timeZone:'America/Chicago', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' }).format(date);
-  }
 
   /******** App state ********/
   let inventory = loadJSON(LS_INV, [
@@ -289,10 +336,22 @@
     { id: crypto.randomUUID(), barcode:"2345678901234", name:"Chocolate Bar",      priceSold:2.99, vendorCost:0.85, startingInventory:35, category:"Snacks" }
   ]);
   let sales = loadJSON(LS_SALES, []);
+  let history = loadJSON(LS_HIST, {}); // { 'YYYY-MM-DD': [{barcode, qty, revenue, ts}], ... }
   let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
 
-  // New day: clear ONLY today's local cache (optional)
-  (function(){ const t=todayKey(); const last=localStorage.getItem(LS_LAST_DAY); if(last && last!==t){ sales=[]; saveJSON(LS_SALES,sales); } localStorage.setItem(LS_LAST_DAY,t); })();
+  // Shift-day rollover: at load, if shift key changed, clear "today" counters locally (history keeps records)
+  (function(){
+    const key = shiftKeyCST(nowCST());
+    const last = localStorage.getItem(LS_SHIFT_KEY);
+    if(last && last !== key){
+      // snapshot previous day into history before clearing
+      snapshotShiftToHistory(last);
+      // clear local "today" list
+      sales = [];
+      saveJSON(LS_SALES, sales);
+    }
+    localStorage.setItem(LS_SHIFT_KEY, key);
+  })();
 
   /******** DOM refs ********/
   const frontBtn = document.getElementById('frontBtn');
@@ -314,6 +373,7 @@
 
   const adminFilter = document.getElementById('adminFilter');
   const adminTbody = document.querySelector('#adminTable tbody');
+  const stkRow = document.getElementById('stkRow');
 
   const hotelBadge = document.getElementById('hotelBadge');
 
@@ -385,16 +445,75 @@
   }
   window.addEventListener('online', flushQueue);
 
-  /******** Local-day stamping on old rows ********/
-  function ensureLocalDayOnSales(){ let changed=false; sales.forEach(s=>{ if(!s.ld){ s.ld=localDateKey(s.ts); changed=true; } }); if(changed) saveJSON(LS_SALES,sales); }
+  /******** History & Day Log ********/
+  function snapshotShiftToHistory(shiftKey){
+    if(!shiftKey) return;
+    const items = sales; // sales from the previous key already persisted
+    if(!items.length) return;
+    // Aggregate
+    const agg = new Map();
+    for(const s of items){
+      const bc = s.barcode; const qty = s.qty||0;
+      const prod = inventory.find(p=>p.barcode===bc);
+      const price = prod?.priceSold || 0;
+      const rec = agg.get(bc) || { barcode:bc, name:prod?.name||'(Unknown)', qty:0, revenue:0 };
+      rec.qty += qty; rec.revenue += price * qty;
+      agg.set(bc, rec);
+    }
+    const arr = Array.from(agg.values());
+    history[shiftKey] = arr;
+    saveJSON(LS_HIST, history);
+  }
+
+  function dayTotalsFromHistory(){
+    const out = [];
+    for(const d in history){
+      const rows = history[d] || [];
+      let units=0, rev=0;
+      rows.forEach(r=>{ units += r.qty||0; rev += r.revenue||0; });
+      out.push({ day:d, units, rev, rows });
+    }
+    out.sort((a,b)=> a.day < b.day ? 1 : -1);
+    return out;
+  }
+
+  function renderDayLog(){
+    const wrap = document.getElementById('dayLog');
+    wrap.innerHTML = '';
+    const days = dayTotalsFromHistory();
+    if(!days.length){
+      wrap.innerHTML = `<div class="small">No historical shift-days yet. (This will populate automatically after your first 7 AM.)</div>`;
+      return;
+    }
+    for(const d of days){
+      const item = document.createElement('div');
+      item.className = 'accordion-item';
+      const head = document.createElement('div');
+      head.className = 'accordion-head';
+      head.innerHTML = `<div><b>${d.day}</b> — <span class="small">Units: ${d.units} • Revenue: ${currency(d.rev)}</span></div><div>▼</div>`;
+      const body = document.createElement('div');
+      body.className = 'accordion-body';
+      // table
+      let html = `<div style="overflow:auto"><table><thead><tr><th>Product</th><th>Barcode</th><th class="right">Qty</th><th class="right">Revenue</th></tr></thead><tbody>`;
+      d.rows.forEach(r=>{
+        html += `<tr><td>${escapeHtml(r.name)}</td><td><span class="pill">${escapeHtml(r.barcode)}</span></td><td class="right">${r.qty}</td><td class="right">${currency(r.revenue)}</td></tr>`;
+      });
+      html += `</tbody></table></div>`;
+      body.innerHTML = html;
+      head.addEventListener('click', ()=>{
+        body.style.display = body.style.display==='block' ? 'none' : 'block';
+      });
+      item.appendChild(head); item.appendChild(body); wrap.appendChild(item);
+    }
+  }
 
   /******** Aggregations ********/
   function todaysAggregate(){
-    const day = todayKey();
+    const key = localStorage.getItem(LS_SHIFT_KEY) || shiftKeyCST();
     const byItem = new Map();
     for(const s of sales){
-      const isToday = s.ld ? (s.ld===day) : (localDateKey(s.ts)===day);
-      if(!isToday) continue;
+      const sKey = s.ld || shiftKeyCST(s.ts);
+      if(sKey !== key) continue;
       const bc = s.barcode;
       const prod = inventory.find(p=>p.barcode===bc);
       const name = prod?.name || '(Unknown)';
@@ -414,7 +533,7 @@
   function showToast(msg, kind='ok', ms=1200){ toastEl.textContent = msg; toastEl.className = `toast ${kind}`; toastEl.style.display = 'block'; setTimeout(()=> toastEl.style.display='none', ms); }
   function beepOk(){ tone(880, 80); }
   function beepErr(){ tone(220, 160); }
-  function tone(freq, dur){ try{ const ctx = new (window.AudioContext||window.webkitAudioContext)(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.type='sine'; o.frequency.value=freq; o.connect(g); g.connect(ctx.destination); g.gain.setValueAtTime(0.001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime+0.01); o.start(); setTimeout(()=>{ g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.02); o.stop(ctx.currentTime+0.03); ctx.close(); }, dur);}catch{} }
+  function tone(freq, dur){ try{ const ctx = new (window.AudioContext||window.webkitAudioContext)(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.type='sine'; o.frequency.value=freq; o.connect(g); g.connect(ctx.destination); g.gain.setValueAtTime(0.001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime+0.01); o.start(); setTimeout(()=>{ g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.02); o.stop(ctx.currentTime+0.03); ctx.close(); }, dur);}catch{} }
 
   /******** Renderers ********/
   function renderScanLog(){
@@ -428,7 +547,7 @@
         <td><span class="pill">${escapeHtml(r.barcode||'')}</span></td>
         <td class="right">${r.sold}</td>
         <td class="right">${currency(r.revenue)}</td>
-        <td class="right">${r.lastTs? fmtTime(r.lastTs): '-'}</td>
+        <td class="right">${r.lastTs? new Date(r.lastTs).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit', second:'2-digit'}) : '-'}</td>
       `;
       logTbody.appendChild(tr);
     }
@@ -453,7 +572,7 @@
       totalUnits += sold; totalRev += rev;
       const tr=document.createElement('tr');
       tr.innerHTML = `
-        <td><div style="display:flex;align-items:center;gap:8px"><div style="font-weight:600">${escapeHtml(p.name)}</div><span class="pill">${escapeHtml(p.barcode||"no barcode")}</span></div></td>
+        <td><div style="display:flex;align-items:center;gap:8px"><div style="font-weight:700">${escapeHtml(p.name)}</div><span class="pill">${escapeHtml(p.barcode||"no barcode")}</span></div></td>
         <td class="right">${currency(p.priceSold)}</td>
         <td class="right">${p.startingInventory||0}</td>
         <td class="right">${sold}</td>
@@ -465,7 +584,7 @@
     unitsSoldEl.textContent = String(totalUnits);
     revenueTodayEl.textContent = currency(totalRev);
   }
-  function renderAdmin(){
+  function renderAdminTable(){
     const q=(adminFilter.value||"").trim().toLowerCase();
     const map = todaySalesMap();
     adminTbody.innerHTML = "";
@@ -495,33 +614,90 @@
           let val=inp.value;
           if(f==='priceSold'||f==='vendorCost') val=parseFloat(val)||0;
           if(f==='startingInventory') val=parseInt(val)||0;
-          p[f]=val; saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdmin();
+          p[f]=val; saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdminAll();
         });
       });
       tr.querySelector('[data-act="del"]').addEventListener('click', ()=>{
         if(!confirm('Remove this product?')) return;
         inventory=inventory.filter(x=>x.id!==p.id);
-        saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdmin();
+        saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdminAll();
       });
       adminTbody.appendChild(tr);
     }
   }
 
+  /******** Robinhood-like cards & sparklines ********/
+  function last7SeriesFor(barcode){
+    // build array of last 7 shift-days quantities
+    const days = Object.keys(history).sort(); // ascending
+    const last7 = days.slice(-7);
+    const out = [];
+    for(const d of last7){
+      const recs = history[d] || [];
+      const found = recs.find(r=> r.barcode===barcode);
+      out.push(found ? found.qty : 0);
+    }
+    return out.length ? out : [0];
+  }
+  function drawSpark(canvas, series){
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+    const min = Math.min(...series), max = Math.max(...series);
+    const span = Math.max(1, max - min);
+    const step = w / (series.length - 1 || 1);
+    ctx.lineWidth = 2;
+    const up = series[series.length-1] >= series[0];
+    ctx.strokeStyle = up ? getComputedStyle(document.documentElement).getPropertyValue('--ok') : getComputedStyle(document.documentElement).getPropertyValue('--err');
+    ctx.beginPath();
+    series.forEach((v,i)=>{
+      const x = i*step;
+      const y = h - ((v - min) / span) * (h-4) - 2;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+  }
+  function renderStocks(){
+    stkRow.innerHTML = '';
+    const map = todaySalesMap();
+    const cards = inventory.map(p=>{
+      const qty = map.get(p.barcode)||0;
+      const series = last7SeriesFor(p.barcode);
+      const up = series.length>1 ? (series[series.length-1] - series[0]) >= 0 : qty>0;
+      const div = document.createElement('div');
+      div.className = `stk ${up?'up':'down'}`;
+      div.innerHTML = `
+        <div>
+          <div class="name">${escapeHtml(p.name)}</div>
+          <div class="small">${escapeHtml(p.category||'')} • <span class="${up?'tag-up':'tag-down'}">${up?'+':'-'} trend</span></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <canvas class="spark" width="120" height="32"></canvas>
+          <div class="price">${currency(p.priceSold)}</div>
+        </div>
+      `;
+      const canvas = div.querySelector('canvas');
+      drawSpark(canvas, series);
+      return div;
+    });
+    cards.forEach(c=> stkRow.appendChild(c));
+  }
+
   /******** Filters ********/
   filterInput.addEventListener('input', ()=>{ renderFront(); renderScanLog(); });
-  adminFilter.addEventListener('input', renderAdmin);
+  adminFilter.addEventListener('input', renderAdminTable);
 
   /******** Catalog mgmt ********/
   addProduct.addEventListener('click', ()=>{
     inventory.push({ id:crypto.randomUUID(), barcode:"", name:"New Product", priceSold:0, vendorCost:0, startingInventory:0, category:"" });
-    saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdmin();
+    saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdminAll();
   });
   exportCSV.addEventListener('click', ()=>{
     const headers=["barcode","name","priceSold","vendorCost","startingInventory","category"];
     const body=inventory.map(p=>[p.barcode,p.name,p.priceSold,p.vendorCost,p.startingInventory,p.category||""].map(x=>String(x).replaceAll(",","")).join(",")).join("\n");
     const csv=headers.join(",")+"\n"+body;
     const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; a.download=`inventory_${todayKey()}.csv`; a.click(); URL.revokeObjectURL(url);
+    const a=document.createElement('a'); a.href=url; a.download=`inventory_${shiftKeyCST(nowCST())}.csv`; a.click(); URL.revokeObjectURL(url);
   });
   importCSV.addEventListener('change', (ev)=>{
     const f=ev.target.files?.[0]; if(!f) return;
@@ -535,15 +711,18 @@
           priceSold: parseFloat(cols[idx("priceSold")]) || 0, vendorCost: parseFloat(cols[idx("vendorCost")]) || 0,
           startingInventory: parseInt(cols[idx("startingInventory")]) || 0, category: cols[idx("category")]?.trim() || "" });
       }
-      if(out.length){ inventory=out; saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdmin(); }
+      if(out.length){ inventory=out; saveJSON(LS_INV, inventory); renderFront(); renderScanLog(); renderAdminAll(); }
       ev.target.value="";
     };
     r.readAsText(f);
   });
   clearToday.addEventListener('click', ()=>{
-    if(!confirm("Clear today’s sales (today only)?")) return;
-    const day=todayKey(); sales=sales.filter(s=> (s.ld ? s.ld !== day : localDateKey(s.ts)!==day) ); saveJSON(LS_SALES,sales);
-    renderFront(); renderScanLog(); renderAdmin();
+    if(!confirm("Clear current shift-day sales (does not touch inventory)?")) return;
+    const key=localStorage.getItem(LS_SHIFT_KEY) || shiftKeyCST();
+    // snapshot to history before clearing
+    snapshotShiftToHistory(key);
+    sales=[]; saveJSON(LS_SALES,sales);
+    renderFront(); renderScanLog(); renderAdminAll(); renderDayLog();
   });
   syncCatalog.addEventListener('click', async ()=>{
     const url=getGAS(); if(!url){ alert("Add Apps Script URL in Setup first."); return; }
@@ -561,7 +740,7 @@
       passModal.style.display="none";
       frontBtn.classList.remove('primary'); adminBtn.classList.add('primary');
       frontView.style.display="none"; adminView.style.display="block";
-      renderAdmin();
+      renderAdminAll();
     } else { passErr.textContent="Incorrect password"; }
   });
   document.getElementById('changePass').addEventListener('click', ()=>{
@@ -601,8 +780,7 @@
 
   document.addEventListener('keydown', (e)=>{
     const inSession = sessionModal.style.display === 'grid';
-    if(!inSession) return; // <— ignore keys unless session is open
-
+    if(!inSession) return; // ignore keys unless session is open
     if(e.key==='Enter' || e.key==='NumpadEnter'){
       const code = buffer.trim(); buffer = '';
       if(code){ sessionScan(code); }
@@ -676,14 +854,14 @@
     const entries = [];
     for (const [bc, qty] of sessionMap.entries()){
       const p = inventory.find(x=>x.barcode===bc); if(!p) continue;
-      entries.push({ id: crypto.randomUUID(), ts, hotel, barcode: bc, name: p.name, priceSold: p.priceSold||0, qty, revenue: (p.priceSold||0)*qty });
+      const ld = shiftKeyCST(now);
+      entries.push({ id: crypto.randomUUID(), ts, hotel, barcode: bc, name: p.name, priceSold: p.priceSold||0, qty, revenue: (p.priceSold||0)*qty, ld });
     }
 
     // Optimistic UI: local update first
-    const ld = localDateKey(now);
-    for (const e of entries) sales.push({ id:e.id, barcode:e.barcode, qty:e.qty, ts:e.ts, ld });
+    for (const e of entries) sales.push({ id:e.id, barcode:e.barcode, qty:e.qty, ts:e.ts, ld:e.ld });
     saveJSON(LS_SALES, sales);
-    renderFront(); renderScanLog();
+    renderFront(); renderScanLog(); renderAdminAll();
     closeSession(); showToast('Session posted', 'ok');
 
     // Network (one call)
@@ -715,7 +893,7 @@
     // Remove locally
     sales = sales.filter(s=>s.id!==id);
     saveJSON(LS_SALES, sales);
-    renderFront(); renderScanLog();
+    renderFront(); renderScanLog(); renderAdminAll();
     showToast('Removed selected item', 'ok');
     undoModal.style.display='none';
 
@@ -725,12 +903,12 @@
   });
 
   function buildUndoTable(){
-    const day = todayKey();
-    const todayItems = sales.filter(s=> (s.ld?s.ld===day:localDateKey(s.ts)===day))
+    const key = localStorage.getItem(LS_SHIFT_KEY) || shiftKeyCST();
+    const todayItems = sales.filter(s=> (s.ld || shiftKeyCST(s.ts)) === key)
                             .sort((a,b)=> new Date(b.ts)-new Date(a.ts));
     undoBody.innerHTML = '';
     if(!todayItems.length){
-      const tr=document.createElement('tr'); tr.innerHTML = `<td colspan="5" class="small" style="padding:6px 8px;">No posted items today.</td>`;
+      const tr=document.createElement('tr'); tr.innerHTML = `<td colspan="5" class="small" style="padding:6px 8px;">No posted items this shift-day.</td>`;
       undoBody.appendChild(tr); return;
     }
     for(const s of todayItems){
@@ -738,7 +916,7 @@
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><input type="radio" name="undoPick" value="${escapeHtml(s.id)}" /></td>
-        <td>${fmtTime(s.ts)}</td>
+        <td>${new Date(s.ts).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit', second:'2-digit'})}</td>
         <td>${escapeHtml(p?.name||'(Unknown)')}</td>
         <td><span class="pill">${escapeHtml(s.barcode||'')}</span></td>
         <td class="right">${s.qty||0}</td>
@@ -747,9 +925,13 @@
     }
   }
 
+  /******** Clock + Admin composites ********/
+  function renderStocksAndDayLog(){ renderStocks(); renderDayLog(); }
+  function renderAdminAll(){ renderStocksAndDayLog(); renderAdminTable(); }
+
   /******** Init ********/
-  function tickCST(){ cstClock.textContent = fmtTimeCST(new Date()); }
-  function init(){ refreshBadges(); ensureLocalDayOnSales(); renderFront(); renderScanLog(); flushQueue(); tickCST(); setInterval(tickCST, 1000); }
+  function tickCST(){ cstClock.textContent = fmtCST(new Date()); }
+  function init(){ refreshBadges(); renderFront(); renderScanLog(); renderAdminAll(); flushQueue(); tickCST(); setInterval(tickCST, 1000); }
   init();
 </script>
 </body>
