@@ -430,18 +430,22 @@
         saveJSON(LS_INV, inventory);
       }
 
-      const today = todayKey();
-      const rows = (data.salesTodayRaw||[]);
-      const serverToday = rows.map(r => ({
-        id: String(r.id || crypto.randomUUID()),
-        barcode: String(r.barcode || ''),
-        qty: Number(r.qty)||0,
-        ts: r.ts || new Date().toISOString(),
-        ld: today
-      }));
-      const nonToday = (sales||[]).filter(s => (s.ld ? s.ld !== today : localDateKey(s.ts) !== today));
-      sales = [...nonToday, ...serverToday];
-      saveJSON(LS_SALES, sales);
+ const today = todayKey();
+const rows = (data.salesTodayRaw||[]);
+const serverToday = rows.map(r => ({
+  id: String(r.id || crypto.randomUUID()),
+  barcode: String(r.barcode || ''),
+  qty: Number(r.qty)||0,
+  ts: r.ts || new Date().toISOString(),
+  ld: today,
+  // keep name + price from server so UI doesn't lose labels later
+  name: r.name || '',
+  price: Number(r.priceSold) || 0
+}));
+const nonToday = (sales||[]).filter(s => (s.ld ? s.ld !== today : localDateKey(s.ts) !== today));
+sales = [...nonToday, ...serverToday];
+saveJSON(LS_SALES, sales);
+
 
       if ((data.hotels||[]).length) setHotelName(data.hotels[0]);
 
