@@ -789,17 +789,19 @@ sessionPost.addEventListener('click', async ()=>{
   let undoSelection = { bc: null, max: 0 };
 
   function buildUndoTable(){
-    const day = todayKey();
-    const group = new Map(); // bc -> { name, bc, totalQty }
-    sales.filter(s => (s.ld ? s.ld === day : localDateKey(s.ts) === day))
-         .forEach(s => {
-           const bc = s.barcode;
-           const p  = inventory.find(x => x.barcode === bc);
-           const name = p?.name || s.name || '(Unknown)';
-           const g = group.get(bc) || { name, bc, totalQty: 0 };
-           g.totalQty += (s.qty || 0);
-           group.set(bc, g);
-         });
+const day = todayKey();
+const group = new Map(); // bc -> { name, bc, totalQty }
+sales.filter(s => (s.ld ? s.ld === day : localDateKey(s.ts) === day))
+     .forEach(s => {
+       const bc = s.barcode;
+       // prefer the stored sale name first, then inventory
+       const inv = inventory.find(x => x.barcode === bc);
+       const name = s.name || inv?.name || '(Unknown)';
+       const g = group.get(bc) || { name, bc, totalQty: 0 };
+       g.name = g.name || name;
+       g.totalQty += (s.qty || 0);
+       group.set(bc, g);
+     });
 
     undoBody.innerHTML = '';
     const rows = Array.from(group.values()).sort((a,b)=> b.totalQty - a.totalQty || a.name.localeCompare(b.name));
@@ -842,32 +844,38 @@ sessionPost.addEventListener('click', async ()=>{
     await undoByQuantity(bc, 1);
     buildUndoTable();
   }
-
-  async function undoByQuantity(barcode, qty){
-    // local cache update (newest-first reduction)
-    const day = todayKey();
-    let remaining = qty;
-    for (let i = sales.length - 1; i >= 0 && remaining > 0; i--){
-      const s = sales[i];
-      const isToday = s.ld ? (s.ld === day) : (localDateKey(s.ts) === day);
-      if (!isToday || s.barcode !== barcode) continue;
-      const q = s.qty || 0;
-      if (q <= remaining){ remaining -= q; sales.splice(i,1); }
-      else { s.qty = q - remaining; remaining = 0; }
-    }
-    saveJSON(LS_SALES, sales);
-    renderFront(); renderScanLog();
-    showToast(`Undid ${qty - remaining} scan${(qty-remaining)===1?'':'s'}`, 'ok');
-
-    // backend call
-    const ok = await sendToGAS({ type:"undo", payload:{ barcode, qty }});
-    if (!ok){
-      const q = loadQueue(); q.push({ type:"undo", payload:{ barcode, qty }}); saveQueue(q);
-    } else {
-      await flushQueue();
-      await pullTodayFromServer(false);
-    }
+async function undoByQuantity(barcode, qty){
+  // 1) Optimistic local update (newest-first reduction)
+  const day = todayKey();
+  let remaining = qty;
+  for (let i = sales.length - 1; i >= 0 && remaining > 0; i--){
+    const s = sales[i];
+    const isToday = s.ld ? (s.ld === day) : (localDateKey(s.ts) === day);
+    if (!isToday || s.barcode !== barcode) continue;
+    const q = s.qty || 0;
+    if (q <= remaining){ remaining -= q; sales.splice(i,1); }
+    else { s.qty = q - remaining; remaining = 0; }
   }
+  saveJSON(LS_SALES, sales);
+
+  // 2) Instant UI refresh (line disappears immediately)
+  renderFront();
+  renderScanLog();
+  // If Undo modal is open, refresh its list too
+  if (undoModal.style.display === 'grid') buildUndoTable();
+
+  showToast(`Undid ${qty} scan${qty===1?'':'s'}`, 'ok');
+
+  // 3) Fire-and-forget backend (queue on failure, no blocking UI)
+  const ok = await sendToGAS({ type:"undo", payload:{ barcode, qty }});
+  if (!ok){
+    const q = loadQueue(); q.push({ type:"undo", payload:{ barcode, qty }}); saveQueue(q);
+  } else {
+    // optional soft reconcile
+    pullTodayFromServer(false);
+  }
+}
+
 
   undoOpenBtn.addEventListener('click', ()=>{ buildUndoTable(); undoModal.style.display='grid'; });
   undoCancel.addEventListener('click', ()=> undoModal.style.display='none');
