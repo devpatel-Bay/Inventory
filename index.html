@@ -310,11 +310,7 @@
   let sales     = loadJSON(LS_SALES, []);
   let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
 
-  const SEED_FALLBACK = [
-    { id: crypto.randomUUID(), barcode:"0123456789012", name:"Bottled Water 16oz", priceSold:1.99, vendorCost:0.45, startingInventory:50, category:"Drinks" },
-    { id: crypto.randomUUID(), barcode:"1234567890123", name:"Chips - Classic",    priceSold:2.49, vendorCost:0.65, startingInventory:40, category:"Snacks" },
-    { id: crypto.randomUUID(), barcode:"2345678901234", name:"Chocolate Bar",      priceSold:2.99, vendorCost:0.85, startingInventory:35, category:"Snacks" }
-  ];
+  const SEED_FALLBACK = [];
   let initialSynced = false;
 
   if (!localStorage.getItem(LS_HOTEL)) localStorage.setItem(LS_HOTEL, DEFAULT_HOTEL_NAME);
