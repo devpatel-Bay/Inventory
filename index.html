@@ -772,50 +772,107 @@ const resp = await fetch(getGAS() + '?summary=today&lite=1', { cache: 'no-store'
   }
 
   /******** Undo Picker ********/
-  function buildUndoTable(){
-    const day = todayKey();
-    const todayItems = sales.filter(s=> (s.ld?s.ld===day:localDateKey(s.ts)===day))
-                            .sort((a,b)=> new Date(b.ts)-new Date(a.ts));
-    undoBody.innerHTML = '';
-    if(!todayItems.length){
-      const tr=document.createElement('tr'); tr.innerHTML = `<td colspan="5" class="small" style="padding:6px 8px;">No posted items today.</td>`;
-      undoBody.appendChild(tr); return;
-    }
-    for(const s of todayItems){
-      const p = inventory.find(x=>x.barcode===s.barcode);
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><input type="radio" name="undoPick" value="${escapeHtml(s.id)}" /></td>
-        <td>${fmtTime(s.ts)}</td>
-        <td>${escapeHtml(p?.name||'(Unknown)')}</td>
-        <td><span class="pill">${escapeHtml(s.barcode||'')}</span></td>
-        <td class="right">${s.qty||0}</td>
-      `;
-      undoBody.appendChild(tr);
+/******** Undo Picker – grouped + fast “Remove 1” ********/
+function buildUndoTable(){
+  const day = todayKey();
+  // Group today's posted sales by barcode
+  const group = new Map(); // bc -> { name, bc, totalQty }
+  sales.filter(s => (s.ld ? s.ld === day : localDateKey(s.ts) === day))
+       .forEach(s => {
+         const bc = s.barcode;
+         const p = inventory.find(x => x.barcode === bc);
+         const name = p?.name || s.name || '(Unknown)';
+         const g = group.get(bc) || { name, bc, totalQty: 0 };
+         g.totalQty += (s.qty || 0);
+         group.set(bc, g);
+       });
+
+  undoBody.innerHTML = '';
+  const rows = Array.from(group.values()).sort((a,b)=> b.totalQty - a.totalQty || a.name.localeCompare(b.name));
+
+  if (!rows.length){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="5" class="small" style="padding:6px 8px;">No posted items today.</td>`;
+    undoBody.appendChild(tr);
+    return;
+  }
+
+  rows.forEach(g => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td></td>
+      <td>${escapeHtml(g.name)}</td>
+      <td><span class="pill">${escapeHtml(g.bc)}</span></td>
+      <td class="right">${g.totalQty}</td>
+      <td class="right">
+        <div class="row" style="justify-content:flex-end; gap:6px;">
+          <input type="number" min="1" max="${g.totalQty}" value="1" style="width:70px" class="input" data-q-inp="${escapeHtml(g.bc)}" />
+          <button class="btn" data-rem1="${escapeHtml(g.bc)}">Remove 1</button>
+          <button class="btn primary" data-remN="${escapeHtml(g.bc)}">Remove N</button>
+        </div>
+      </td>
+    `;
+    undoBody.appendChild(tr);
+  });
+
+  // Wire up actions
+  undoBody.querySelectorAll('[data-rem1]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const bc = btn.getAttribute('data-rem1');
+      await undoByQuantity(bc, 1);
+    });
+  });
+  undoBody.querySelectorAll('[data-remN]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const bc = btn.getAttribute('data-remN');
+      const inp = undoBody.querySelector(`[data-q-inp="${CSS.escape(bc)}"]`);
+      const n = Math.max(1, Math.floor(Number(inp?.value || 1)));
+      await undoByQuantity(bc, n);
+    });
+  });
+}
+
+async function undoByQuantity(barcode, qty){
+  // Update local cache first for instant UI
+  const day = todayKey();
+  let remaining = qty;
+  // Walk newest-first and reduce qty on matching entries (today)
+  for (let i = sales.length - 1; i >= 0 && remaining > 0; i--){
+    const s = sales[i];
+    const isToday = s.ld ? (s.ld === day) : (localDateKey(s.ts) === day);
+    if (!isToday || s.barcode !== barcode) continue;
+    if ((s.qty || 0) <= remaining){
+      remaining -= (s.qty || 0);
+      sales.splice(i, 1); // remove this entry
+    } else {
+      s.qty -= remaining;
+      remaining = 0;
     }
   }
-  document.getElementById('undoOpen').addEventListener('click', ()=>{ buildUndoTable(); undoModal.style.display='grid'; });
-  document.getElementById('undoCancel').addEventListener('click', ()=> undoModal.style.display='none');
-  document.getElementById('undoConfirm').addEventListener('click', async ()=>{
-    const sel = document.querySelector('input[name="undoPick"]:checked');
-    if(!sel){ alert('Pick one item to remove.'); return; }
-    const id = sel.value;
-    const item = sales.find(s=>s.id===id);
-    if(!item){ alert('Item not found.'); return; }
+  saveJSON(LS_SALES, sales);
+  renderFront(); renderScanLog(); buildUndoTable();
+  showToast(`Removed ${qty - remaining} scan${(qty-remaining)===1?'':'s'}`, 'ok');
 
-    sales = sales.filter(s=>s.id!==id);
-    saveJSON(LS_SALES, sales);
-    renderFront(); renderScanLog();
-    showToast('Removed selected item', 'ok');
-    undoModal.style.display='none';
+  // Tell backend (single, fast call)
+  const ok = await sendToGAS({ type: "undo", payload: { barcode, qty }});
+  if (!ok) {
+    const q = loadQueue(); q.push({ type:"undo", payload:{ barcode, qty }}); saveQueue(q);
+  } else {
+    await flushQueue();
+    await pullTodayFromServer(false);
+  }
+}
 
-    const ok = await sendToGAS({ type:"undo", payload:{ id:item.id, barcode:item.barcode, ts:item.ts }});
-    if(!ok){ const q=loadQueue(); q.push({ type:"undo", payload:{ id:item.id, barcode:item.barcode, ts:item.ts }}); saveQueue(q); }
-    else { 
-      await flushQueue(); 
-      await pullTodayFromServer(true);   // authoritative refresh
-    }
-  });
+document.getElementById('undoOpen').addEventListener('click', ()=>{ buildUndoTable(); undoModal.style.display='grid'; });
+document.getElementById('undoCancel').addEventListener('click', ()=> undoModal.style.display='none');
+
+// Keep legacy "Remove Selected" button usable: it will still delete an exact row if selected.
+// (You can keep or remove this; leaving for compatibility.)
+document.getElementById('undoConfirm').addEventListener('click', async ()=>{
+  const sel = document.querySelector('input[name="undoPick"]:checked');
+  if(!sel){ alert('Tip: use “Remove 1”/“Remove N” for partial undo.'); return; }
+});
+
 
   /******** Init + time ********/
   function tickCST(){ cstClock.textContent = fmtTimeCST(new Date()); }
