@@ -409,6 +409,9 @@
 
   /******** Pull from server (authoritative) ********/
   async function pullTodayFromServer(forceToast=false){
+    // In pullTodayFromServer():
+const resp = await fetch(getGAS() + '?summary=today&lite=1', { cache: 'no-store' });
+
     const url = getGAS();
     if(!url) return false;
 
