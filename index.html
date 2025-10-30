@@ -314,11 +314,7 @@
   let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
 
   // Fallback seed (only if pull fails AND cache empty)
-  const SEED_FALLBACK = [
-    { id: crypto.randomUUID(), barcode:"0123456789012", name:"Bottled Water 16oz", priceSold:1.99, vendorCost:0.45, startingInventory:50, category:"Drinks" },
-    { id: crypto.randomUUID(), barcode:"1234567890123", name:"Chips - Classic",    priceSold:2.49, vendorCost:0.65, startingInventory:40, category:"Snacks" },
-    { id: crypto.randomUUID(), barcode:"2345678901234", name:"Chocolate Bar",      priceSold:2.99, vendorCost:0.85, startingInventory:35, category:"Snacks" }
-  ];
+  const SEED_FALLBACK = [];
   let initialSynced = false;
 
   // Seed defaults per-device for hotel name + GAS URL
