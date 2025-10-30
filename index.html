@@ -736,27 +736,40 @@
     }
   }
   sessionCancel.addEventListener('click', ()=> closeSession());
-  sessionPost.addEventListener('click', async ()=>{
-    if (sessionMap.size === 0) { closeSession(); return; }
-    const now = new Date(); const ts = now.toISOString(); const hotel = getHotelName();
-    const entries = [];
-    for (const [bc, qty] of sessionMap.entries()){
-      const p = inventory.find(x=>x.barcode===bc); if(!p) continue;
-      entries.push({ id: crypto.randomUUID(), ts, hotel, barcode: bc, name: p.name, priceSold: p.priceSold||0, qty, revenue: (p.priceSold||0)*qty });
-    }
-    const ld = localDateKey(now);
-    for (const e of entries) sales.push({ id:e.id, barcode:e.barcode, qty:e.qty, ts:e.ts, ld });
-    saveJSON(LS_SALES, sales);
-    renderFront(); renderScanLog();
-    closeSession(); showToast('Session posted', 'ok');
+sessionPost.addEventListener('click', async ()=>{
+  if (sessionMap.size === 0) { closeSession(); return; }
+  const now = new Date(); const ts = now.toISOString(); const hotel = getHotelName();
+  const entries = [];
+  for (const [bc, qty] of sessionMap.entries()){
+    const p = inventory.find(x=>x.barcode===bc); if(!p) continue;
+    entries.push({
+      id: crypto.randomUUID(),
+      ts, hotel,
+      barcode: bc,
+      name: p.name,               // keep name
+      priceSold: p.priceSold||0,  // keep price
+      qty,
+      revenue: (p.priceSold||0)*qty
+    });
+  }
+  const ld = localDateKey(now);
+  for (const e of entries) {
+    // keep name/price locally so it never shows "(Unknown)"
+    sales.push({ id:e.id, barcode:e.barcode, qty:e.qty, ts:e.ts, ld, name:e.name, price:e.priceSold });
+  }
+  saveJSON(LS_SALES, sales);
+  renderFront(); renderScanLog();
+  closeSession(); showToast('Session posted', 'ok');
 
-    const ok = await postBatch(entries);
-    if(!ok){ const q=loadQueue(); q.push({type:"batch", payload:entries}); saveQueue(q); }
-    else { 
-      await flushQueue(); 
-      await pullTodayFromServer(true);
-    }
-  });
+  const ok = await postBatch(entries);
+  if(!ok){ const q=loadQueue(); q.push({type:"batch", payload:entries}); saveQueue(q); }
+  else {
+    await flushQueue();
+    // Optional: light sync without blocking UI
+    pullTodayFromServer(false);
+  }
+});
+
   scanInput.addEventListener('click', ()=>{ openSession(); nudgeFocusBanner(); });
   function addChip(txt, kind='ok'){
     const span=document.createElement('span'); span.className = `chip ${kind==='err'?'err':'ok'}`; span.textContent = txt; scanStrip.prepend(span);
