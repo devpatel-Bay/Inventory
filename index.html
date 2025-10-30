@@ -40,7 +40,6 @@
   .chip.err { border-color:#fecaca; background:#fef2f2; }
   .banner { background:#fff7ed; border:1px solid #fed7aa; color:#7c2d12; padding:8px 12px; border-radius:12px; margin-top:8px; display:none; }
 
-  /* Mobile-friendly tweaks */
   @media (max-width: 640px) {
     .container { padding: 12px; }
     h1 { font-size: 18px; }
@@ -71,7 +70,6 @@
 
     <div class="row" style="align-items:center; justify-content:space-between; margin-top:8px;">
       <div class="small">Hotel: <b id="hotelBadge">—</b></div>
-      <!-- Setup removed from front desk view -->
     </div>
 
     <div id="focusBanner" class="banner">Scanner is inactive until you open a Scan Session. Click the input below to start.</div>
@@ -170,7 +168,6 @@
         </div>
       </div>
 
-      <!-- Settings moved here -->
       <div class="card" style="margin-top:12px;">
         <div class="card-title">
           <h3 style="margin:0; font-size:16px; font-weight:600">Settings</h3>
@@ -249,28 +246,29 @@
     </div>
   </div>
 
-  <!-- Undo Picker Modal -->
+  <!-- Undo Picker Modal (simplified UX) -->
   <div id="undoModal" class="modal-backdrop">
     <div class="modal">
       <h3 style="margin-top:0">Undo a Posted Item</h3>
-      <div class="small" style="margin-bottom:8px">Select one of today’s posted entries to remove.</div>
+      <div class="small" style="margin-bottom:8px">Select a product from today, choose how many to undo, then click <b>Undo</b>. (Tip: double-click a row to undo 1.)</div>
       <div style="max-height:300px; overflow:auto; border:1px solid var(--border); border-radius:12px;">
         <table style="width:100%; border-collapse:collapse;">
           <thead>
             <tr>
               <th></th>
-              <th>Time</th>
               <th>Product</th>
               <th>Barcode</th>
-              <th class="right">Qty</th>
+              <th class="right">Total Today</th>
             </tr>
           </thead>
           <tbody id="undoBody"></tbody>
         </table>
       </div>
-      <div class="row" style="justify-content:flex-end; margin-top:12px">
+      <div class="row" style="justify-content:flex-end; align-items:center; gap:8px; margin-top:12px">
+        <label class="small">Qty to undo</label>
+        <input id="undoQty" class="input" type="number" min="1" value="1" style="width:90px" />
         <button id="undoCancel" class="btn">Cancel</button>
-        <button id="undoConfirm" class="btn primary">Remove Selected</button>
+        <button id="undoConfirm" class="btn primary">Undo</button>
       </div>
     </div>
   </div>
@@ -279,7 +277,6 @@
 
 <script>
   /*************** REQUIRED: Hard-coded defaults ****************/
-  // TODO: replace both with your live values (these are used automatically on every device)
   const DEFAULT_HOTEL_NAME = 'Hampton Inn Cable Ranch';
   const DEFAULT_GAS_URL    = 'https://script.google.com/macros/s/AKfycbwPQGVTtCNZgAhSkrrpnpmQuneSoueJJiixAzMEmoNBPLda9ZgjzRhDlO1oyAp5leTMfw/exec';
 
@@ -294,7 +291,7 @@
   const todayKey = () => localDateKey(new Date());
   const loadJSON = (k,f)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch{ return f; }};
   const saveJSON = (k,v)=>localStorage.setItem(k,JSON.stringify(v));
-  const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); 
   function fmtTime(ts){ try{ const d=new Date(ts); return d.toLocaleTimeString('en-US',{hour:'2-digit', minute:'2-digit', second:'2-digit'}) }catch{ return '-'; } }
   function fmtTimeCST(date){
     return new Intl.DateTimeFormat('en-US',{ timeZone:'America/Chicago', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' }).format(date);
@@ -308,20 +305,21 @@
     return { hour:get('hour'), minute:get('minute') };
   }
 
-  /******** App state (Sheet is the source of truth) ********/
-  let inventory = loadJSON(LS_INV, []);   // filled by Sheet
-  let sales     = loadJSON(LS_SALES, []); // filled by Sheet
+  /******** App state ********/
+  let inventory = loadJSON(LS_INV, []);
+  let sales     = loadJSON(LS_SALES, []);
   let adminPass = localStorage.getItem(LS_ADMIN_PASS) || "admin123";
 
-  // Fallback seed (only if pull fails AND cache empty)
-  const SEED_FALLBACK = [];
+  const SEED_FALLBACK = [
+    { id: crypto.randomUUID(), barcode:"0123456789012", name:"Bottled Water 16oz", priceSold:1.99, vendorCost:0.45, startingInventory:50, category:"Drinks" },
+    { id: crypto.randomUUID(), barcode:"1234567890123", name:"Chips - Classic",    priceSold:2.49, vendorCost:0.65, startingInventory:40, category:"Snacks" },
+    { id: crypto.randomUUID(), barcode:"2345678901234", name:"Chocolate Bar",      priceSold:2.99, vendorCost:0.85, startingInventory:35, category:"Snacks" }
+  ];
   let initialSynced = false;
 
-  // Seed defaults per-device for hotel name + GAS URL
   if (!localStorage.getItem(LS_HOTEL)) localStorage.setItem(LS_HOTEL, DEFAULT_HOTEL_NAME);
   if (!localStorage.getItem(LS_GAS))   localStorage.setItem(LS_GAS,   DEFAULT_GAS_URL);
 
-  // Preserve last-day stamp
   (function(){ const t=todayKey(); const last=localStorage.getItem(LS_LAST_DAY); localStorage.setItem(LS_LAST_DAY,t); })();
 
   /******** DOM refs ********/
@@ -347,7 +345,6 @@
 
   const hotelBadge = document.getElementById('hotelBadge');
 
-  // Admin settings refs
   const hotelInput = document.getElementById('hotelInput');
   const gasInput = document.getElementById('gasInput');
   const setupMsg = document.getElementById('setupMsg');
@@ -366,14 +363,20 @@
   const clearToday = document.getElementById('clearToday');
   const syncCatalog = document.getElementById('syncCatalog');
 
-  // Scan Session modal
   const sessionModal = document.getElementById('sessionModal');
   const sessionBody  = document.getElementById('sessionBody');
   const sessionHint  = document.getElementById('sessionHint');
   const sessionCancel= document.getElementById('sessionCancel');
   const sessionPost  = document.getElementById('sessionPost');
 
-  /******** Settings helpers (defaults + overrides) ********/
+  const undoModal   = document.getElementById('undoModal');
+  const undoBody    = document.getElementById('undoBody');
+  const undoQty     = document.getElementById('undoQty');
+  const undoOpenBtn = document.getElementById('undoOpen');
+  const undoCancel  = document.getElementById('undoCancel');
+  const undoConfirm = document.getElementById('undoConfirm');
+
+  /******** Settings helpers ********/
   const getHotelName = ()=> localStorage.getItem(LS_HOTEL) || DEFAULT_HOTEL_NAME;
   const setHotelName = n => localStorage.setItem(LS_HOTEL, n || DEFAULT_HOTEL_NAME);
   const getGAS = ()=> localStorage.getItem(LS_GAS) || DEFAULT_GAS_URL;
@@ -409,9 +412,6 @@
 
   /******** Pull from server (authoritative) ********/
   async function pullTodayFromServer(forceToast=false){
-    // In pullTodayFromServer():
-const resp = await fetch(getGAS() + '?summary=today&lite=1', { cache: 'no-store' });
-
     const url = getGAS();
     if(!url) return false;
 
@@ -420,7 +420,6 @@ const resp = await fetch(getGAS() + '?summary=today&lite=1', { cache: 'no-store'
       const data = await resp.json();
       if(!data?.ok) return false;
 
-      // Catalog → inventory
       const newInv = (data.catalog||[]).map(p => ({
         id: crypto.randomUUID(),
         barcode: String(p.barcode||''),
@@ -435,7 +434,6 @@ const resp = await fetch(getGAS() + '?summary=today&lite=1', { cache: 'no-store'
         saveJSON(LS_INV, inventory);
       }
 
-      // Sales(today) → replace only today
       const today = todayKey();
       const rows = (data.salesTodayRaw||[]);
       const serverToday = rows.map(r => ({
@@ -449,7 +447,6 @@ const resp = await fetch(getGAS() + '?summary=today&lite=1', { cache: 'no-store'
       sales = [...nonToday, ...serverToday];
       saveJSON(LS_SALES, sales);
 
-      // Hotel name (if present)
       if ((data.hotels||[]).length) setHotelName(data.hotels[0]);
 
       refreshBadges();
@@ -626,8 +623,8 @@ const resp = await fetch(getGAS() + '?summary=today&lite=1', { cache: 'no-store'
     const url=getGAS(); if(!url){ alert("Add Apps Script URL in Settings first."); return; }
     const payload=inventory.map(p=>({ barcode:p.barcode||"", name:p.name||"", priceSold:p.priceSold||0, vendorCost:p.vendorCost||0, startingInventory:p.startingInventory||0 }));
     await fetch(url,{ method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({type:"catalog", payload}), mode:"no-cors" });
-    alert("Catalog sync sent. Check the 'Catalog' tab.");
-    await pullTodayFromServer(true);   // re-pull authoritative snapshot
+    alert("Catalog sync sent. Check the 'Products' tab.");
+    await pullTodayFromServer(true);
   });
 
   /******** Tabs + admin auth ********/
@@ -657,7 +654,7 @@ const resp = await fetch(getGAS() + '?summary=today&lite=1', { cache: 'no-store'
     setGAS(gasInput.value.trim());
     refreshBadges();
     setupMsg.textContent = 'Saved!';
-    await pullTodayFromServer(true);   // pull immediately with new settings
+    await pullTodayFromServer(true);
   });
   testPing.addEventListener('click', async ()=>{
     const url=getGAS(); if(!url){ setupMsg.textContent="Paste your Web App URL first."; return; }
@@ -698,7 +695,6 @@ const resp = await fetch(getGAS() + '?summary=today&lite=1', { cache: 'no-store'
     setTimeout(()=> focusBanner.style.display='none', 1500);
   }
 
-  /******** Scan Session ONLY ********/
   let sessionMap = new Map();
   function openSession(){
     sessionMap = new Map();
@@ -762,7 +758,7 @@ const resp = await fetch(getGAS() + '?summary=today&lite=1', { cache: 'no-store'
     if(!ok){ const q=loadQueue(); q.push({type:"batch", payload:entries}); saveQueue(q); }
     else { 
       await flushQueue(); 
-      await pullTodayFromServer(true);   // authoritative refresh
+      await pullTodayFromServer(true);
     }
   });
   scanInput.addEventListener('click', ()=>{ openSession(); nudgeFocusBanner(); });
@@ -771,108 +767,99 @@ const resp = await fetch(getGAS() + '?summary=today&lite=1', { cache: 'no-store'
     const max=12; while(scanStrip.children.length>max){ scanStrip.removeChild(scanStrip.lastChild); }
   }
 
-  /******** Undo Picker ********/
-/******** Undo Picker – grouped + fast “Remove 1” ********/
-function buildUndoTable(){
-  const day = todayKey();
-  // Group today's posted sales by barcode
-  const group = new Map(); // bc -> { name, bc, totalQty }
-  sales.filter(s => (s.ld ? s.ld === day : localDateKey(s.ts) === day))
-       .forEach(s => {
-         const bc = s.barcode;
-         const p = inventory.find(x => x.barcode === bc);
-         const name = p?.name || s.name || '(Unknown)';
-         const g = group.get(bc) || { name, bc, totalQty: 0 };
-         g.totalQty += (s.qty || 0);
-         group.set(bc, g);
-       });
+  /******** Undo Picker – simple: select product + qty + single Undo ********/
+  let undoSelection = { bc: null, max: 0 };
 
-  undoBody.innerHTML = '';
-  const rows = Array.from(group.values()).sort((a,b)=> b.totalQty - a.totalQty || a.name.localeCompare(b.name));
+  function buildUndoTable(){
+    const day = todayKey();
+    const group = new Map(); // bc -> { name, bc, totalQty }
+    sales.filter(s => (s.ld ? s.ld === day : localDateKey(s.ts) === day))
+         .forEach(s => {
+           const bc = s.barcode;
+           const p  = inventory.find(x => x.barcode === bc);
+           const name = p?.name || s.name || '(Unknown)';
+           const g = group.get(bc) || { name, bc, totalQty: 0 };
+           g.totalQty += (s.qty || 0);
+           group.set(bc, g);
+         });
 
-  if (!rows.length){
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="5" class="small" style="padding:6px 8px;">No posted items today.</td>`;
-    undoBody.appendChild(tr);
-    return;
+    undoBody.innerHTML = '';
+    const rows = Array.from(group.values()).sort((a,b)=> b.totalQty - a.totalQty || a.name.localeCompare(b.name));
+    if (!rows.length){
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td colspan="4" class="small" style="padding:6px 8px;">No posted items today.</td>`;
+      undoBody.appendChild(tr);
+      undoSelection = { bc: null, max: 0 };
+      undoQty.value = 1;
+      return;
+    }
+
+    rows.forEach(g => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="radio" name="undoPick" value="${escapeHtml(g.bc)}" /></td>
+        <td>${escapeHtml(g.name)}</td>
+        <td><span class="pill">${escapeHtml(g.bc)}</span></td>
+        <td class="right">${g.totalQty}</td>
+      `;
+      tr.addEventListener('click', () => selectUndoProduct(g.bc, g.totalQty));
+      tr.addEventListener('dblclick', () => quickUndoOne(g.bc));
+      undoBody.appendChild(tr);
+    });
+
+    const first = rows[0];
+    selectUndoProduct(first.bc, first.totalQty);
   }
 
-  rows.forEach(g => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td></td>
-      <td>${escapeHtml(g.name)}</td>
-      <td><span class="pill">${escapeHtml(g.bc)}</span></td>
-      <td class="right">${g.totalQty}</td>
-      <td class="right">
-        <div class="row" style="justify-content:flex-end; gap:6px;">
-          <input type="number" min="1" max="${g.totalQty}" value="1" style="width:70px" class="input" data-q-inp="${escapeHtml(g.bc)}" />
-          <button class="btn" data-rem1="${escapeHtml(g.bc)}">Remove 1</button>
-          <button class="btn primary" data-remN="${escapeHtml(g.bc)}">Remove N</button>
-        </div>
-      </td>
-    `;
-    undoBody.appendChild(tr);
-  });
+  function selectUndoProduct(bc, maxQty){
+    undoSelection = { bc, max: Math.max(1, maxQty|0) };
+    const radio = document.querySelector(`input[name="undoPick"][value="${CSS.escape(bc)}"]`);
+    if (radio) radio.checked = true;
+    const cur = Math.max(1, Math.floor(Number(undoQty.value || 1)));
+    undoQty.max = String(undoSelection.max);
+    undoQty.value = String(Math.min(cur, undoSelection.max));
+  }
 
-  // Wire up actions
-  undoBody.querySelectorAll('[data-rem1]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const bc = btn.getAttribute('data-rem1');
-      await undoByQuantity(bc, 1);
-    });
-  });
-  undoBody.querySelectorAll('[data-remN]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const bc = btn.getAttribute('data-remN');
-      const inp = undoBody.querySelector(`[data-q-inp="${CSS.escape(bc)}"]`);
-      const n = Math.max(1, Math.floor(Number(inp?.value || 1)));
-      await undoByQuantity(bc, n);
-    });
-  });
-}
+  async function quickUndoOne(bc){
+    await undoByQuantity(bc, 1);
+    buildUndoTable();
+  }
 
-async function undoByQuantity(barcode, qty){
-  // Update local cache first for instant UI
-  const day = todayKey();
-  let remaining = qty;
-  // Walk newest-first and reduce qty on matching entries (today)
-  for (let i = sales.length - 1; i >= 0 && remaining > 0; i--){
-    const s = sales[i];
-    const isToday = s.ld ? (s.ld === day) : (localDateKey(s.ts) === day);
-    if (!isToday || s.barcode !== barcode) continue;
-    if ((s.qty || 0) <= remaining){
-      remaining -= (s.qty || 0);
-      sales.splice(i, 1); // remove this entry
+  async function undoByQuantity(barcode, qty){
+    // local cache update (newest-first reduction)
+    const day = todayKey();
+    let remaining = qty;
+    for (let i = sales.length - 1; i >= 0 && remaining > 0; i--){
+      const s = sales[i];
+      const isToday = s.ld ? (s.ld === day) : (localDateKey(s.ts) === day);
+      if (!isToday || s.barcode !== barcode) continue;
+      const q = s.qty || 0;
+      if (q <= remaining){ remaining -= q; sales.splice(i,1); }
+      else { s.qty = q - remaining; remaining = 0; }
+    }
+    saveJSON(LS_SALES, sales);
+    renderFront(); renderScanLog();
+    showToast(`Undid ${qty - remaining} scan${(qty-remaining)===1?'':'s'}`, 'ok');
+
+    // backend call
+    const ok = await sendToGAS({ type:"undo", payload:{ barcode, qty }});
+    if (!ok){
+      const q = loadQueue(); q.push({ type:"undo", payload:{ barcode, qty }}); saveQueue(q);
     } else {
-      s.qty -= remaining;
-      remaining = 0;
+      await flushQueue();
+      await pullTodayFromServer(false);
     }
   }
-  saveJSON(LS_SALES, sales);
-  renderFront(); renderScanLog(); buildUndoTable();
-  showToast(`Removed ${qty - remaining} scan${(qty-remaining)===1?'':'s'}`, 'ok');
 
-  // Tell backend (single, fast call)
-  const ok = await sendToGAS({ type: "undo", payload: { barcode, qty }});
-  if (!ok) {
-    const q = loadQueue(); q.push({ type:"undo", payload:{ barcode, qty }}); saveQueue(q);
-  } else {
-    await flushQueue();
-    await pullTodayFromServer(false);
-  }
-}
-
-document.getElementById('undoOpen').addEventListener('click', ()=>{ buildUndoTable(); undoModal.style.display='grid'; });
-document.getElementById('undoCancel').addEventListener('click', ()=> undoModal.style.display='none');
-
-// Keep legacy "Remove Selected" button usable: it will still delete an exact row if selected.
-// (You can keep or remove this; leaving for compatibility.)
-document.getElementById('undoConfirm').addEventListener('click', async ()=>{
-  const sel = document.querySelector('input[name="undoPick"]:checked');
-  if(!sel){ alert('Tip: use “Remove 1”/“Remove N” for partial undo.'); return; }
-});
-
+  undoOpenBtn.addEventListener('click', ()=>{ buildUndoTable(); undoModal.style.display='grid'; });
+  undoCancel.addEventListener('click', ()=> undoModal.style.display='none');
+  undoConfirm.addEventListener('click', async ()=>{
+    if (!undoSelection.bc){ alert('Select a product first.'); return; }
+    let n = Math.max(1, Math.floor(Number(undoQty.value || 1)));
+    n = Math.min(n, undoSelection.max);
+    await undoByQuantity(undoSelection.bc, n);
+    buildUndoTable();
+  });
 
   /******** Init + time ********/
   function tickCST(){ cstClock.textContent = fmtTimeCST(new Date()); }
@@ -880,18 +867,18 @@ document.getElementById('undoConfirm').addEventListener('click', async ()=>{
     refreshBadges();
     ensureLocalDayOnSales();
 
-    await flushQueue();                           // 1) push pending writes
-    const ok = await pullTodayFromServer(true);   // 2) pull canonical snapshot
+    await flushQueue();
+    const ok = await pullTodayFromServer(true);
 
     if (!ok && (!inventory.length || !sales.length)) {
-      inventory = SEED_FALLBACK.slice();          // 3) only if nothing to show
+      inventory = SEED_FALLBACK.slice();
       saveJSON(LS_INV, inventory);
     }
 
-    renderFront(); renderScanLog(); if (adminView.style.display !== 'none') renderAdmin(); // 4) show UI
+    renderFront(); renderScanLog(); if (adminView.style.display !== 'none') renderAdmin();
 
     tickCST(); setInterval(tickCST, 1000);
-    setInterval(() => pullTodayFromServer(false), 60000); // background 60s sync
+    setInterval(() => pullTodayFromServer(false), 60000);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') pullTodayFromServer(false);
     });
