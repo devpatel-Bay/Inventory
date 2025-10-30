@@ -464,23 +464,28 @@ saveJSON(LS_SALES, sales);
 
   /******** Aggregations ********/
   function todaysAggregate(){
-    const day = todayKey();
-    const byItem = new Map();
-    for(const s of sales){
-      const isToday = s.ld ? (s.ld===day) : (localDateKey(s.ts)===day);
-      if(!isToday) continue;
-      const bc = s.barcode;
-      const prod = inventory.find(p=>p.barcode===bc);
-      const name = prod?.name || '(Unknown)';
-      const price = prod?.priceSold || 0;
-      const rec = byItem.get(bc) || { name, price, sold:0, revenue:0, lastTs:null, barcode: bc };
-      rec.sold += (s.qty||0);
-      rec.revenue += (price*(s.qty||0));
-      if(!rec.lastTs || new Date(s.ts) > new Date(rec.lastTs)) rec.lastTs = s.ts;
-      byItem.set(bc, rec);
-    }
-    return Array.from(byItem.values());
+  const day = todayKey();
+  const byItem = new Map();
+  for(const s of sales){
+    const isToday = s.ld ? (s.ld===day) : (localDateKey(s.ts)===day);
+    if(!isToday) continue;
+    const bc = s.barcode;
+    const prod = inventory.find(p=>p.barcode===bc);
+    // prefer name/price saved on the sale row; fall back to inventory
+    const name = s.name || prod?.name || '(Unknown)';
+    const price = (typeof s.price === 'number') ? s.price : (prod?.priceSold || 0);
+
+    const rec = byItem.get(bc) || { name, price, sold:0, revenue:0, lastTs:null, barcode: bc };
+    rec.name = rec.name || name;
+    rec.price = (typeof rec.price === 'number') ? rec.price : price;
+    rec.sold += (s.qty||0);
+    rec.revenue += (price*(s.qty||0));
+    if(!rec.lastTs || new Date(s.ts) > new Date(rec.lastTs)) rec.lastTs = s.ts;
+    byItem.set(bc, rec);
   }
+  return Array.from(byItem.values());
+}
+
   function todaySalesMap(){ const m=new Map(); todaysAggregate().forEach(r=> m.set(r.barcode, r.sold)); return m; }
 
   /******** Toast + sounds ********/
